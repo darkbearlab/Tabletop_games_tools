@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>瑞士制賽會管理系統</title>
+    <title>瑞士制賽會管理系統 (進階版)</title>
     <style>
         :root { --primary: #2563eb; --bg: #f8fafc; --card: #ffffff; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); max-width: 800px; margin: 0 auto; padding: 20px; color: #333; }
@@ -347,19 +347,32 @@
     }
 
     function showFinalResults() {
-        document.getElementById('matches-container').innerHTML = ''; // 清空對戰區
+        document.getElementById('matches-container').innerHTML = ''; 
         document.getElementById('round-title').innerText = "🏁 比賽結束";
-        document.getElementById('btn-next-round').classList.add('hidden'); // 隱藏下一輪按鈕
+        document.getElementById('btn-next-round').classList.add('hidden'); 
         
-        // 顯示冠軍 Banner
         const sorted = getSortedPlayers();
-        const champion = sorted[0];
+        const topPlayer = sorted[0];
+
+        // 找出所有數據跟第一名完全一樣的人 (並列冠軍)
+        const champions = sorted.filter(p => 
+            p.score === topPlayer.score && 
+            p.sos === topPlayer.sos && 
+            p.wins === topPlayer.wins
+        );
+
+        // 組合名字，例如 "小明 & 小華"
+        const championNames = champions.map(c => c.name).join(" & ");
+        
+        // 顯示文字調整
+        const titleText = champions.length > 1 ? "並列冠軍" : "冠軍";
+
         const banner = document.getElementById('final-message');
-        banner.innerHTML = `<span class="trophy">🏆</span> 冠軍：${champion.name} (總分 ${champion.score})`;
+        banner.innerHTML = `<span class="trophy">🏆</span> ${titleText}：${championNames} <br><span style="font-size:0.8em; font-weight:normal">(積分 ${topPlayer.score} / SOS ${topPlayer.sos.toFixed(1)})</span>`;
         banner.className = 'final-banner';
         banner.classList.remove('hidden');
 
-        alert("比賽全部結束！請查看最終排名。");
+        alert(`比賽全部結束！恭喜 ${championNames} 獲得${titleText}！`);
     }
     
     // 雖然沒用到，但保留給手動結束用
@@ -391,12 +404,33 @@
         const sorted = getSortedPlayers();
 
         let html = '';
+        
+        // 用來追蹤當前的排名邏輯
+        let currentRank = 1;
+
         sorted.forEach((p, index) => {
-            let rankClass = index === 0 ? 'color:#eab308; font-weight:bold;' : '';
-            let rankIcon = index === 0 ? '🏆 ' : '';
+            // 判斷是否與上一名「完全平手」(積分、SOS、勝場都一樣)
+            let isTied = false;
+            if (index > 0) {
+                const prev = sorted[index - 1];
+                if (p.score === prev.score && p.sos === prev.sos && p.wins === prev.wins) {
+                    isTied = true;
+                }
+            }
+
+            // 如果沒有平手，排名就跳到目前的 index + 1
+            // 例如：第0個是第1名，第1個若沒平手就是第2名
+            // 如果第1個跟第0個平手，它依然顯示第1名，但下一個人(index 2)會變成第3名
+            if (!isTied) {
+                currentRank = index + 1;
+            }
+
+            // 樣式設定：只有第 1 名 (包含並列) 才有冠軍色
+            let rankClass = currentRank === 1 ? 'color:#eab308; font-weight:bold;' : '';
+            let rankIcon = currentRank === 1 ? '🏆 ' : '';
             
             html += `<tr>
-                <td style="${rankClass}">${rankIcon}${index + 1}</td>
+                <td style="${rankClass}">${rankIcon}${currentRank}</td>
                 <td style="${rankClass}">${p.name}</td>
                 <td style="font-weight:bold; color:var(--primary)">${p.score}</td>
                 <td>${p.sos.toFixed(1)}</td>
