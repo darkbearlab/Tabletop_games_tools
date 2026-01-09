@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>瑞士制賽會管理系統</title>
+    <style>
+        :root { --primary: #2563eb; --bg: #f8fafc; --card: #ffffff; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); max-width: 800px; margin: 0 auto; padding: 20px; color: #333; }
+        h1, h2 { color: #1e293b; margin-top: 0; }
+        
+        /* 佈局與卡片 */
+        .section { background: var(--card); padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .hidden { display: none; }
+        
+        /* 設定區塊樣式 */
+        .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; background: #f1f5f9; padding: 15px; border-radius: 6px; margin-bottom: 15px; }
+        .setting-item label { display: block; font-size: 0.9em; margin-bottom: 5px; font-weight: bold; color: #475569; }
+        .setting-item input { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; }
+
+        /* 輸入與按鈕 */
+        .input-group { display: flex; gap: 10px; margin-bottom: 15px; }
+        input[type="text"] { flex: 1; padding: 10px; border: 1px solid #cbd5e1; border-radius: 4px; }
+        button { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { opacity: 0.9; }
+        button.danger { background: #ef4444; }
+        button.secondary { background: #64748b; }
+        button:disabled { background: #cbd5e1; cursor: not-allowed; }
+
+        /* 表格樣式 */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #e2e8f0; }
+        th { background: #f8fafc; color: #64748b; font-size: 0.9em; }
+        
+        /* 對戰組合樣式 */
+        .match-card { display: flex; align-items: center; justify-content: space-between; background: #eff6ff; padding: 10px; margin-bottom: 10px; border-radius: 6px; border: 1px solid #dbeafe; }
+        .vs { font-weight: bold; color: #94a3b8; margin: 0 10px; font-size: 0.8em; }
+        .match-player { flex: 1; font-weight: 600; }
+        .match-player span { font-weight: normal; font-size: 0.85em; color: #64748b; }
+        .result-select { padding: 5px; border-radius: 4px; border: 1px solid #cbd5e1; }
+        
+        .tag { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-left: 5px; }
+        .tag-win { background: #dcfce7; color: #166534; }
+        .tag-loss { background: #fee2e2; color: #991b1b; }
+        
+        /* 冠軍樣式 */
+        .trophy { color: #eab308; margin-right: 5px; }
+        .final-banner { background: #ecfccb; color: #365314; padding: 15px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 1.2em; margin-bottom: 20px; border: 1px solid #bef264; }
+    </style>
+</head>
+<body>
+
+    <h1>🏆 瑞士制賽會管理系統</h1>
+
+    <div id="setup-phase" class="section">
+        <h2>1. 賽事設定與選手登錄</h2>
+        
+        <div class="settings-grid">
+            <div class="setting-item">
+                <label>勝場得分 (Win)</label>
+                <input type="number" id="pts-win" value="1" step="0.5">
+            </div>
+            <div class="setting-item">
+                <label>平手得分 (Draw)</label>
+                <input type="number" id="pts-draw" value="0.5" step="0.5">
+            </div>
+            <div class="setting-item">
+                <label>敗場得分 (Loss)</label>
+                <input type="number" id="pts-loss" value="0" step="0.5">
+            </div>
+            <div class="setting-item">
+                <label>總輪數 (Rounds)</label>
+                <input type="number" id="total-rounds" value="3" min="1">
+            </div>
+        </div>
+
+        <div class="input-group">
+            <input type="text" id="player-name" placeholder="輸入選手名稱 (按 Enter 新增)" onkeypress="handleEnter(event)">
+            <button onclick="addPlayer()">新增選手</button>
+        </div>
+        
+        <div id="player-list">
+            </div>
+        
+        <div style="margin-top: 20px; text-align: right; border-top: 1px solid #eee; padding-top: 15px;">
+            <span id="player-count" style="margin-right: 15px; font-weight: bold; color: #64748b;">目前人數: 0</span>
+            <button onclick="startTournament()">開始比賽</button>
+        </div>
+    </div>
+
+    <div id="tournament-phase" class="section hidden">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h2 id="round-title" style="margin:0;">第 1 輪對戰</h2>
+            <div style="font-size: 0.9em; color: #64748b;">
+                目標輪數: <span id="display-total-rounds">3</span>
+            </div>
+        </div>
+        
+        <div id="matches-container">
+            </div>
+
+        <div style="margin-top: 20px; text-align: right;">
+            <button id="btn-next-round" onclick="finishRound()">結算本輪並進入下一輪</button>
+            <button id="btn-end-tournament" class="secondary hidden" onclick="endTournamentExplicitly()">結束比賽</button>
+        </div>
+    </div>
+
+    <div id="standings-phase" class="section hidden">
+        <div id="final-message" class="hidden"></div> <h2>📊 即時排名</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>排名</th>
+                    <th>選手</th>
+                    <th>積分</th>
+                    <th>對手分 (SOS)</th>
+                    <th>戰績</th>
+                </tr>
+            </thead>
+            <tbody id="standings-body">
+                </tbody>
+        </table>
+        
+        <div style="margin-top: 20px; text-align: right;">
+             <button class="secondary" onclick="resetTournament()" style="font-size: 0.8em;">重置所有資料</button>
+        </div>
+    </div>
+
+<script>
+    // --- 資料結構 ---
+    let players = []; 
+    let currentRound = 0;
+    let matches = []; 
+    
+    // 賽事設定 (預設值)
+    let config = {
+        winPts: 1,
+        drawPts: 0.5,
+        lossPts: 0,
+        totalRounds: 3
+    };
+    
+    // --- 設定階段邏輯 ---
+    function handleEnter(e) {
+        if (e.key === 'Enter') addPlayer();
+    }
+
+    function addPlayer() {
+        const input = document.getElementById('player-name');
+        const name = input.value.trim();
+        if (!name) return;
+
+        const newPlayer = {
+            id: Date.now() + Math.random().toString(36).substr(2, 5),
+            name: name,
+            score: 0,
+            opponents: [],
+            sos: 0,
+            wins: 0, draws: 0, losses: 0
+        };
+        
+        players.push(newPlayer);
+        input.value = '';
+        renderPlayerList();
+    }
+
+    function removePlayer(id) {
+        players = players.filter(p => p.id !== id);
+        renderPlayerList();
+    }
+
+    function renderPlayerList() {
+        const list = document.getElementById('player-list');
+        document.getElementById('player-count').innerText = `目前人數: ${players.length}`;
+        
+        if (players.length === 0) {
+            list.innerHTML = '<p style="color: #64748b; text-align:center; padding: 20px;">尚未加入選手...</p>';
+            return;
+        }
+
+        let html = '<table><thead><tr><th>名稱</th><th style="width:80px;">操作</th></tr></thead><tbody>';
+        players.forEach(p => {
+            html += `<tr>
+                <td>${p.name}</td>
+                <td><button class="danger" style="padding: 4px 8px; font-size: 0.8em;" onclick="removePlayer('${p.id}')">移除</button></td>
+            </tr>`;
+        });
+        html += '</tbody></table>';
+        list.innerHTML = html;
+    }
+
+    function startTournament() {
+        if (players.length < 2) {
+            alert("至少需要 2 名選手才能開始！");
+            return;
+        }
+
+        // 讀取設定值
+        config.winPts = parseFloat(document.getElementById('pts-win').value) || 1;
+        config.drawPts = parseFloat(document.getElementById('pts-draw').value) || 0.5;
+        config.lossPts = parseFloat(document.getElementById('pts-loss').value) || 0;
+        config.totalRounds = parseInt(document.getElementById('total-rounds').value) || 3;
+
+        // UI 切換
+        document.getElementById('setup-phase').classList.add('hidden');
+        document.getElementById('tournament-phase').classList.remove('hidden');
+        document.getElementById('standings-phase').classList.remove('hidden');
+        document.getElementById('display-total-rounds').innerText = config.totalRounds;
+        
+        currentRound = 0;
+        nextRound();
+    }
+
+    // --- 配對邏輯 ---
+    function generatePairings() {
+        let sortedPlayers = [...players].sort((a, b) => b.score - a.score || 0.5 - Math.random());
+        let roundMatches = [];
+        let byePlayer = null;
+
+        if (sortedPlayers.length % 2 !== 0) {
+            // 優先讓分數最低且沒輪空過的人輪空 (簡化版：直接取最後一名)
+            byePlayer = sortedPlayers.pop(); 
+        }
+
+        while (sortedPlayers.length > 0) {
+            let p1 = sortedPlayers.shift();
+            let p2Index = -1;
+
+            for (let i = 0; i < sortedPlayers.length; i++) {
+                if (!p1.opponents.includes(sortedPlayers[i].id)) {
+                    p2Index = i;
+                    break;
+                }
+            }
+            
+            if (p2Index === -1) p2Index = 0; // 強制配對
+
+            let p2 = sortedPlayers.splice(p2Index, 1)[0];
+            roundMatches.push({ p1: p1, p2: p2 });
+        }
+
+        return { matches: roundMatches, bye: byePlayer };
+    }
+
+    function nextRound() {
+        currentRound++;
+        document.getElementById('round-title').innerText = `第 ${currentRound} / ${config.totalRounds} 輪對戰`;
+        
+        const pairingResult = generatePairings();
+        matches = pairingResult.matches;
+        
+        const container = document.getElementById('matches-container');
+        container.innerHTML = '';
+
+        matches.forEach((m, index) => {
+            const div = document.createElement('div');
+            div.className = 'match-card';
+            div.innerHTML = `
+                <div class="match-player" style="text-align: right;">${m.p1.name} <span>(${m.p1.score}分)</span></div>
+                <div class="vs">VS</div>
+                <div class="match-player">${m.p2.name} <span>(${m.p2.score}分)</span></div>
+                <select id="match-result-${index}" class="result-select">
+                    <option value="">輸入結果...</option>
+                    <option value="p1_win">${m.p1.name} 勝</option>
+                    <option value="p2_win">${m.p2.name} 勝</option>
+                    <option value="draw">平手</option>
+                </select>
+            `;
+            container.appendChild(div);
+        });
+
+        if (pairingResult.bye) {
+            const div = document.createElement('div');
+            div.className = 'match-card';
+            div.style.background = '#f0fdf4';
+            div.style.borderColor = '#bbf7d0';
+            div.innerHTML = `
+                <div class="match-player">輪空 (Bye)</div>
+                <div style="flex: 2; text-align: center; color: #166534; font-size: 0.9em;">
+                    ${pairingResult.bye.name} 自動獲勝 (得 ${config.winPts} 分)
+                </div>
+                <input type="hidden" id="bye-player-id" value="${pairingResult.bye.id}">
+            `;
+            container.appendChild(div);
+        } else {
+             const existingBye = document.getElementById('bye-player-id');
+             if(existingBye) existingBye.remove();
+        }
+
+        // 滾動到最上方
+        window.scrollTo(0, 0);
+    }
+
+    function finishRound() {
+        // 1. 檢查輸入
+        for (let i = 0; i < matches.length; i++) {
+            const result = document.getElementById(`match-result-${i}`).value;
+            if (!result) {
+                alert("請輸入所有比賽的結果！");
+                return;
+            }
+        }
+
+        // 2. 更新分數 (使用 Config 設定的值)
+        matches.forEach((m, index) => {
+            const result = document.getElementById(`match-result-${index}`).value;
+            const p1 = players.find(p => p.id === m.p1.id);
+            const p2 = players.find(p => p.id === m.p2.id);
+
+            p1.opponents.push(p2.id);
+            p2.opponents.push(p1.id);
+
+            if (result === 'p1_win') {
+                p1.score += config.winPts; p2.score += config.lossPts;
+                p1.wins++; p2.losses++;
+            } else if (result === 'p2_win') {
+                p2.score += config.winPts; p1.score += config.lossPts;
+                p2.wins++; p1.losses++;
+            } else {
+                p1.score += config.drawPts; p2.score += config.drawPts;
+                p1.draws++; p2.draws++;
+            }
+        });
+
+        // 3. 處理輪空 (通常輪空視為勝場)
+        const byeInput = document.getElementById('bye-player-id');
+        if (byeInput) {
+            const byePlayer = players.find(p => p.id === byeInput.value);
+            if (byePlayer) {
+                byePlayer.score += config.winPts; // 輪空得勝場分
+                byePlayer.wins++;
+            }
+        }
+
+        calculateSOS();
+        updateStandings();
+
+        // 4. 判斷比賽是否結束
+        if (currentRound >= config.totalRounds) {
+            showFinalResults();
+        } else {
+            setTimeout(() => {
+                alert(`第 ${currentRound} 輪結束！準備下一輪。`);
+                nextRound();
+            }, 100);
+        }
+    }
+
+    function showFinalResults() {
+        document.getElementById('matches-container').innerHTML = ''; // 清空對戰區
+        document.getElementById('round-title').innerText = "🏁 比賽結束";
+        document.getElementById('btn-next-round').classList.add('hidden'); // 隱藏下一輪按鈕
+        
+        // 顯示冠軍 Banner
+        const sorted = getSortedPlayers();
+        const champion = sorted[0];
+        const banner = document.getElementById('final-message');
+        banner.innerHTML = `<span class="trophy">🏆</span> 冠軍：${champion.name} (總分 ${champion.score})`;
+        banner.className = 'final-banner';
+        banner.classList.remove('hidden');
+
+        alert("比賽全部結束！請查看最終排名。");
+    }
+    
+    // 雖然沒用到，但保留給手動結束用
+    function endTournamentExplicitly() {
+        if(confirm("確定要提前結束比賽嗎？")) showFinalResults();
+    }
+
+    function calculateSOS() {
+        players.forEach(p => {
+            let sos = 0;
+            p.opponents.forEach(oid => {
+                const opponent = players.find(op => op.id === oid);
+                if (opponent) sos += opponent.score;
+            });
+            p.sos = sos; // 如果分數有小數點，JS會自動處理
+        });
+    }
+
+    function getSortedPlayers() {
+        return [...players].sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            if (b.sos !== a.sos) return b.sos - a.sos;
+            return b.wins - a.wins;
+        });
+    }
+
+    function updateStandings() {
+        const tbody = document.getElementById('standings-body');
+        const sorted = getSortedPlayers();
+
+        let html = '';
+        sorted.forEach((p, index) => {
+            let rankClass = index === 0 ? 'color:#eab308; font-weight:bold;' : '';
+            let rankIcon = index === 0 ? '🏆 ' : '';
+            
+            html += `<tr>
+                <td style="${rankClass}">${rankIcon}${index + 1}</td>
+                <td style="${rankClass}">${p.name}</td>
+                <td style="font-weight:bold; color:var(--primary)">${p.score}</td>
+                <td>${p.sos.toFixed(1)}</td>
+                <td><span class="tag tag-win">${p.wins}W</span> ${p.draws}D <span class="tag tag-loss">${p.losses}L</span></td>
+            </tr>`;
+        });
+        tbody.innerHTML = html;
+    }
+
+    function resetTournament() {
+        if(confirm("警告：這將清除所有比賽紀錄和設定，確定重置嗎？")) {
+            location.reload(); // 最簡單乾淨的重置方式
+        }
+    }
+</script>
+
+</body>
+</html>
