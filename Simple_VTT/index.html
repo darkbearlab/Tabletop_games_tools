@@ -280,12 +280,54 @@
         #hud-friendly { top: 20px; left: 20px; border-left: 4px solid var(--friendly); }
         #hud-hostile { bottom: 20px; left: 20px; border-left: 4px solid var(--hostile); }
 
+        /* --- 浮動 Iframe 視窗樣式 --- */
+        #iframe-window {
+            position: absolute;
+            top: 60px; right: 20px; /* 預設位置 */
+            width: 400px; height: 500px;
+            background: white;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+            border-radius: 8px;
+            display: none; /* 預設隱藏 */
+            z-index: 60;
+            flex-direction: column;
+            overflow: hidden;
+            /* 讓視窗可以被拉動大小 */
+            resize: both; 
+            min-width: 300px; min-height: 200px;
+        }
+        .iframe-header {
+            background: var(--accent);
+            color: white;
+            padding: 8px 12px;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: move; /* 拖曳游標 */
+            user-select: none;
+        }
+        .iframe-close { cursor: pointer; font-size: 1.2rem; line-height: 1; }
+        .iframe-content {
+            flex-grow: 1;
+            position: relative;
+            background: #eee;
+        }
+        iframe {
+            width: 100%; height: 100%; border: none; display: block;
+        }
+        /* 遮罩層：拖曳時蓋住 iframe 以免吃掉滑鼠事件 */
+        .iframe-overlay {
+            position: absolute; top:0; left:0; right:0; bottom:0;
+            display: none; z-index: 1;
+        }
+
     </style>
 </head>
 <body>
 
     <div id="sidebar">
-        <h2>VTT 虛擬桌面 v6.3</h2>
+        <h2>VTT 虛擬桌面</h2>
         
         <details open>
             <summary>1. 檔案資源</summary>
@@ -325,6 +367,16 @@
             </div>
         </details>
 
+        <details open>
+            <summary>4. 外部工具</summary>
+            <div class="details-content">
+                <button id="btnOpenDice" style="width:100%; background:#8e44ad; color:white; border:none;">🎲 開啟檢定擲骰器</button>
+            </div>
+        </details>
+        
+        <div style="margin-top:auto; font-size:0.8rem; color:#666; padding-top:10px;">
+            提示：滾輪以滑鼠為中心縮放
+        </div>
     </div>
 
     <div id="game-area">
@@ -332,6 +384,17 @@
 
         <canvas id="mapCanvas"></canvas>
         <canvas id="unitCanvas"></canvas>
+
+        <div id="iframe-window">
+            <div class="iframe-header" id="iframe-header">
+                <span>檢定擲骰器</span>
+                <span class="iframe-close" id="iframe-close">×</span>
+            </div>
+            <div class="iframe-content">
+                <div class="iframe-overlay" id="iframe-overlay"></div>
+                <iframe src="https://darkbearlab.github.io/Tabletop_games_tools/Opposed_Roll/"></iframe>
+            </div>
+        </div>
 
         <div id="hud-friendly" class="hud-panel">
             <button class="btn-close" onclick="game.deselect('friendly')">×</button>
@@ -571,7 +634,6 @@
             const unitSize = (params.type === 'square' ? params.size : params.size * 1.7) * 0.9;
             const halfSize = unitSize / 2;
 
-            // 1. Line & Distance
             if (game.selection.friendly && game.selection.hostile) {
                 const u1 = game.units.find(u => u.id === game.selection.friendly);
                 const u2 = game.units.find(u => u.id === game.selection.hostile);
@@ -610,7 +672,6 @@
                 }
             }
 
-            // 2. Units (Render Loop)
             const renderList = [...game.units].sort((a,b) => {
                 const aSel = (a.id === game.selection.friendly || a.id === game.selection.hostile);
                 const bSel = (b.id === game.selection.friendly || b.id === game.selection.hostile);
@@ -634,7 +695,6 @@
                     ctx.shadowBlur = 4;
                 }
 
-                // 選取變色邏輯
                 if (isSelected) {
                     ctx.fillStyle = isFriendly ? '#2ecc71' : '#ff6b6b'; 
                 } else {
@@ -660,7 +720,6 @@
                 ctx.translate(u.x, u.y);
                 if (game.draggedUnit === u) ctx.scale(1.1, 1.1);
 
-                // Name (Bottom-Left, White)
                 const name = u.libData.name;
                 if (name) {
                     ctx.font = `bold ${unitSize * 0.22}px sans-serif`;
@@ -678,7 +737,6 @@
                     ctx.fillText(name, textX, textY, unitSize * 0.9);
                 }
 
-                // Counters (Top-Right, Cyan)
                 if (u.counters && u.counters.length > 0) {
                     const counterText = u.counters.join(' / ');
                     ctx.font = `bold ${unitSize * 0.22}px sans-serif`;
@@ -696,14 +754,13 @@
                     ctx.fillText(counterText, cntX, cntY, unitSize * 0.9);
                 }
 
-                // R Marker (Move to above name)
                 if (u.isFlipped) {
                     ctx.font = `bold ${unitSize * 0.25}px sans-serif`; 
                     ctx.textAlign = 'left';
-                    ctx.textBaseline = 'bottom'; // Changed to stack above name
+                    ctx.textBaseline = 'bottom'; 
 
                     const indX = -halfSize + (unitSize * 0.08); 
-                    const indY = halfSize - (unitSize * 0.3); // Position above the name
+                    const indY = halfSize - (unitSize * 0.3); 
 
                     ctx.lineWidth = 3 / game.view.scale;
                     ctx.strokeStyle = 'black';
@@ -782,6 +839,48 @@
                 container.appendChild(el);
             });
         }
+
+        // --- Iframe 視窗拖曳邏輯 ---
+        const iframeWin = document.getElementById('iframe-window');
+        const header = document.getElementById('iframe-header');
+        const overlay = document.getElementById('iframe-overlay');
+        const btnOpenDice = document.getElementById('btnOpenDice');
+        const btnCloseIframe = document.getElementById('iframe-close');
+
+        btnOpenDice.onclick = () => {
+            iframeWin.style.display = 'flex';
+        };
+        btnCloseIframe.onclick = () => {
+            iframeWin.style.display = 'none';
+        };
+
+        let isDragIframe = false;
+        let iframeStart = { x: 0, y: 0, left: 0, top: 0 };
+
+        header.addEventListener('mousedown', (e) => {
+            isDragIframe = true;
+            iframeStart.x = e.clientX;
+            iframeStart.y = e.clientY;
+            iframeStart.left = iframeWin.offsetLeft;
+            iframeStart.top = iframeWin.offsetTop;
+            overlay.style.display = 'block'; // 顯示遮罩防止 iframe 吃掉事件
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (isDragIframe) {
+                const dx = e.clientX - iframeStart.x;
+                const dy = e.clientY - iframeStart.y;
+                iframeWin.style.left = (iframeStart.left + dx) + 'px';
+                iframeWin.style.top = (iframeStart.top + dy) + 'px';
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            if(isDragIframe) {
+                isDragIframe = false;
+                overlay.style.display = 'none'; // 隱藏遮罩恢復互動
+            }
+        });
 
         // --- 互動事件 ---
 
@@ -981,7 +1080,6 @@
             
             const data = unit.isFlipped ? unit.libData.back : unit.libData.front;
             
-            // 翻面文字更新
             const displayName = unit.libData.name + (unit.isFlipped ? " (已翻面)" : "");
             document.getElementById(prefix + 'name').innerText = displayName;
 
@@ -1012,7 +1110,7 @@
                 input.value = val;
                 input.onchange = (e) => {
                     unit.counters[idx] = parseInt(e.target.value);
-                    drawUnits(); // 即時更新地圖
+                    drawUnits(); 
                 };
 
                 const btnDel = document.createElement('button');
@@ -1020,7 +1118,7 @@
                 btnDel.className = 'counter-del';
                 btnDel.onclick = () => {
                     unit.counters.splice(idx, 1);
-                    updateHud(type, unit); // 重繪 HUD
+                    updateHud(type, unit); 
                     drawUnits();
                 };
 
@@ -1029,7 +1127,7 @@
                 counterContainer.appendChild(wrap);
             });
 
-            // Add Counter Button (Fixed: ID prefix)
+            // Add Counter Button
             const btnAdd = document.getElementById(btnPrefix + 'add-counter');
             const newBtnAdd = btnAdd.cloneNode(true);
             btnAdd.parentNode.replaceChild(newBtnAdd, btnAdd);
