@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>簡易戰棋 VTT</title>
+    <style>
+        :root {
+            --bg-color: #2c3e50;
+            --panel-bg: #f8f9fa;
+            --text-color: #333;
+            --accent: #2980b9;
+            --danger: #c0392b;
+            --friendly: #27ae60;
+            --hostile: #c0392b;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* --- 側邊欄 --- */
+        #sidebar {
+            width: 320px;
+            background: var(--panel-bg);
+            padding: 15px;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            z-index: 20;
+            border-right: 1px solid #ccc;
+            overflow-y: auto;
+            transition: width 0.3s ease, padding 0.3s ease;
+            white-space: nowrap;
+        }
+
+        #sidebar.collapsed {
+            width: 0;
+            padding: 0;
+            border: none;
+            overflow: hidden;
+        }
+
+        h2 { margin: 0 0 10px 0; border-bottom: 3px solid var(--accent); color: var(--accent); font-size: 1.2rem; padding-bottom:5px;}
+        
+        details {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #fff;
+            margin-bottom: 5px;
+        }
+        summary {
+            padding: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            color: #555;
+            background: #ecf0f1;
+            border-radius: 4px;
+            list-style: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        summary::after { content: '▼'; font-size: 0.8rem; transition: 0.2s; }
+        details[open] summary::after { transform: rotate(180deg); }
+        details[open] summary { border-bottom: 1px solid #ddd; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+
+        .details-content { padding: 10px; }
+
+        .btn-group { display: flex; gap: 5px; }
+        
+        button {
+            padding: 8px;
+            border: 1px solid #bdc3c7;
+            border-radius: 4px;
+            cursor: pointer;
+            background: #ecf0f1;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        button:hover { background: #dfe6e9; }
+        .btn-primary { background: var(--accent); color: white; border: none; }
+        .btn-primary:hover { background: #1f6391; }
+
+        #unit-library {
+            max-height: 400px; 
+            overflow-y: auto;
+        }
+
+        .lib-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+            cursor: grab;
+            background: white;
+            transition: background 0.2s;
+        }
+        .lib-item:hover { background: #f0f8ff; }
+        .lib-item:active { cursor: grabbing; }
+        
+        .lib-thumb {
+            width: 40px; height: 40px;
+            background: #eee;
+            border-radius: 4px;
+            object-fit: cover;
+            border: 1px solid #ccc;
+        }
+
+        .faction-switch {
+            display: flex;
+            align-items: center;
+            background: #ddd;
+            border-radius: 20px;
+            padding: 3px;
+            cursor: pointer;
+            width: fit-content;
+        }
+        .faction-switch input { display: none; }
+        .faction-label {
+            padding: 5px 12px;
+            border-radius: 16px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+        .fs-friendly { background: white; color: var(--friendly); }
+        .fs-hostile { color: #777; }
+        
+        input:checked ~ .fs-friendly { background: transparent; color: #777; }
+        input:checked ~ .fs-hostile { background: var(--hostile); color: white; }
+
+        /* --- 遊戲畫面 --- */
+        #game-area {
+            flex-grow: 1;
+            position: relative;
+            background-color: #333;
+            overflow: hidden;
+            cursor: default;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0; left: 0;
+            display: block;
+        }
+
+        #btnToggleSidebar {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 100;
+            background: white;
+            border: 1px solid #999;
+            border-radius: 4px;
+            padding: 5px 10px;
+            font-size: 1.2rem;
+            line-height: 1;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            color: #333;
+        }
+        #btnToggleSidebar:hover { background: #eee; }
+
+        /* --- HUD 面板 --- */
+        .hud-panel {
+            position: absolute;
+            width: 300px;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            backdrop-filter: blur(4px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            display: none; 
+            z-index: 50;
+            pointer-events: auto;
+        }
+
+        .hud-header {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.3);
+        }
+        
+        .hud-img {
+            width: 60px; height: 60px;
+            border-radius: 6px;
+            background: #fff;
+            object-fit: cover;
+            flex-shrink: 0;
+        }
+
+        .hud-title { font-size: 1.1rem; font-weight: bold; margin-bottom: 4px;}
+        .hud-stats { 
+            font-size: 0.9rem; color: #ddd; white-space: pre-wrap; line-height: 1.4; margin-bottom: 10px;
+            max-height: 180px; overflow-y: auto; padding-right: 5px;
+        }
+        .hud-stats::-webkit-scrollbar { width: 6px; }
+        .hud-stats::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 3px; }
+        .hud-stats::-webkit-scrollbar-track { background: transparent; }
+
+        /* 計數器區域 */
+        .hud-counters-row {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .counter-wrapper {
+            display: flex;
+            align-items: center;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            padding: 2px;
+        }
+        .counter-input {
+            width: 50px;
+            background: transparent;
+            border: none;
+            color: cyan;
+            text-align: center;
+            font-weight: bold;
+            font-size: 1rem;
+        }
+        .counter-input:focus { outline: none; background: rgba(0,0,0,0.2); }
+        .counter-del {
+            background: none; border: none; color: #e74c3c; 
+            font-weight: bold; cursor: pointer; padding: 0 5px;
+            font-size: 1rem;
+        }
+        .btn-add-counter {
+            background: #27ae60; color: white; border: none; border-radius: 50%;
+            width: 24px; height: 24px; font-weight: bold; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            margin-left: auto; /* 推到最右邊 */
+        }
+        .btn-add-counter:hover { background: #2ecc71; }
+
+        /* 備註 */
+        .hud-note {
+            width: 100%;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid #555;
+            color: #eee;
+            padding: 6px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            resize: vertical;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+            font-family: inherit;
+        }
+        .hud-note:focus { outline: none; border-color: var(--accent); background: rgba(255,255,255,0.2); }
+
+        .hud-actions { display: flex; gap: 10px; }
+        .hud-btn {
+            flex: 1; padding: 6px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.85rem;
+        }
+        .btn-flip { background: #f39c12; color: white; }
+        .btn-remove { background: #c0392b; color: white; }
+        .btn-close { 
+            position: absolute; top: 5px; right: 8px; 
+            background: none; border: none; color: #aaa; font-size: 1.2rem; cursor: pointer;
+        }
+        .btn-close:hover { color: white; }
+
+        #hud-friendly { top: 20px; left: 20px; border-left: 4px solid var(--friendly); }
+        #hud-hostile { bottom: 20px; left: 20px; border-left: 4px solid var(--hostile); }
+
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <h2>VTT 虛擬桌面</h2>
+        
+        <details open>
+            <summary>1. 檔案資源</summary>
+            <div class="details-content">
+                <div class="btn-group">
+                    <button onclick="document.getElementById('fileMap').click()">載入地圖</button>
+                    <button onclick="document.getElementById('fileLib').click()">載入兵牌庫</button>
+                </div>
+                <input type="file" id="fileMap" accept=".json" style="display:none">
+                <input type="file" id="fileLib" accept=".json" style="display:none">
+            </div>
+        </details>
+
+        <details open>
+            <summary>2. 部署設定</summary>
+            <div class="details-content">
+                <label class="faction-switch">
+                    <input type="checkbox" id="spawnFaction">
+                    <span class="faction-label fs-friendly">我方 (Friendly)</span>
+                    <span class="faction-label fs-hostile">敵方 (Hostile)</span>
+                </label>
+            </div>
+			<div style="margin-top:8px; padding-top:8px; border-top:1px dashed #ccc;">
+				<label style="font-size:0.85rem; color:#555; display:flex; align-items:center; cursor:pointer;">
+					<input type="checkbox" id="allowDiagonals" checked style="margin-right:6px;"> 
+					允許斜向移動 (僅方格)
+				</label>
+			</div>
+        </details>
+
+        <details open>
+            <summary>3. 兵牌庫</summary>
+            <div id="unit-library">
+                <div style="padding:20px; color:#999; text-align:center; font-size:0.9rem;">
+                    (尚未載入)
+                </div>
+            </div>
+        </details>
+        
+        <div style="margin-top:auto; font-size:0.8rem; color:#666; padding-top:10px;">
+            提示：滾輪以滑鼠為中心縮放
+        </div>
+    </div>
+
+    <div id="game-area">
+        <button id="btnToggleSidebar" title="切換選單">☰</button>
+
+        <canvas id="mapCanvas"></canvas>
+        <canvas id="unitCanvas"></canvas>
+
+        <div id="hud-friendly" class="hud-panel">
+            <button class="btn-close" onclick="game.deselect('friendly')">×</button>
+            <div class="hud-header">
+                <img class="hud-img" id="hud-f-img">
+                <div>
+                    <div class="hud-title" id="hud-f-name">單位名稱</div>
+                    <div style="font-size:0.8rem; color:#2ecc71;">我方單位</div>
+                </div>
+            </div>
+            <div class="hud-stats" id="hud-f-text"></div>
+            
+            <div class="hud-counters-row" id="hud-f-counters-row">
+                <div id="hud-f-counters-container" style="display:flex; gap:5px; flex-wrap:wrap;"></div>
+                <button class="btn-add-counter" id="btn-f-add-counter" title="新增計數器">+</button>
+            </div>
+
+            <textarea class="hud-note" id="hud-f-note" rows="2"></textarea>
+            <div class="hud-actions">
+                <button class="hud-btn btn-flip" id="btn-f-flip">翻面</button>
+                <button class="hud-btn btn-remove" id="btn-f-remove">移除</button>
+            </div>
+        </div>
+
+        <div id="hud-hostile" class="hud-panel">
+            <button class="btn-close" onclick="game.deselect('hostile')">×</button>
+            <div class="hud-header">
+                <img class="hud-img" id="hud-h-img">
+                <div>
+                    <div class="hud-title" id="hud-h-name">單位名稱</div>
+                    <div style="font-size:0.8rem; color:#e74c3c;">敵方單位</div>
+                </div>
+            </div>
+            <div class="hud-stats" id="hud-h-text"></div>
+
+            <div class="hud-counters-row" id="hud-h-counters-row">
+                <div id="hud-h-counters-container" style="display:flex; gap:5px; flex-wrap:wrap;"></div>
+                <button class="btn-add-counter" id="btn-h-add-counter" title="新增計數器">+</button>
+            </div>
+
+            <textarea class="hud-note" id="hud-h-note" rows="2"></textarea>
+            <div class="hud-actions">
+                <button class="hud-btn btn-flip" id="btn-h-flip">翻面</button>
+                <button class="hud-btn btn-remove" id="btn-h-remove">移除</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 全域變數與設定 ---
+        const mapCanvas = document.getElementById('mapCanvas');
+        const unitCanvas = document.getElementById('unitCanvas');
+        const mapCtx = mapCanvas.getContext('2d');
+        const unitCtx = unitCanvas.getContext('2d');
+        const container = document.getElementById('game-area');
+        const sidebar = document.getElementById('sidebar');
+
+        let mapData = {
+            config: { gridType: 'hex', sizeMm: 25, rows: 20, cols: 20, dpi: 96 },
+            data: { filled: {}, lines: [] }
+        };
+        
+        let unitLibrary = [];
+
+        let game = {
+            units: [], 
+            selection: { friendly: null, hostile: null }, 
+            view: { scale: 1.0, offsetX: 50, offsetY: 50 },
+            isPanning: false,
+            isDraggingUnit: false,
+            draggedUnit: null,
+            lastMouse: { x: 0, y: 0 },
+            dragStartPos: { x: 0, y: 0 } 
+        };
+
+        const MM_TO_PX = 96 / 25.4;
+
+        function init() {
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas();
+            bindEvents();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function resizeCanvas() {
+            mapCanvas.width = unitCanvas.width = container.clientWidth;
+            mapCanvas.height = unitCanvas.height = container.clientHeight;
+            drawMap(); 
+            drawUnits(); 
+        }
+
+        // --- 數學運算 ---
+        function getGridParams() {
+            const pxSize = mapData.config.sizeMm * MM_TO_PX;
+            if (mapData.config.gridType === 'hex') {
+                const w = pxSize;
+                const size = w / Math.sqrt(3);
+                return { w, h: 2*size, size, type: 'hex' };
+            } else {
+                return { size: pxSize, type: 'square' };
+            }
+        }
+
+        function getCellCenter(r, c, params) {
+            if (params.type === 'square') {
+                const s = params.size;
+                return { x: c*s + s/2, y: r*s + s/2 };
+            } else {
+                const { w, h, size } = params;
+                const xStep = w;
+                const yStep = h * 0.75;
+                const cx = (c * w) + ((r % 2) * (w / 2)) + (w / 2);
+                const cy = (r * yStep) + (h / 2);
+                return { x: cx, y: cy };
+            }
+        }
+        
+        function getCellPoly(r, c, params) {
+             const center = getCellCenter(r, c, params);
+             const points = [];
+             if (params.type === 'square') {
+                 const s = params.size;
+                 const x = center.x - s/2; const y = center.y - s/2;
+                 points.push({x:x, y:y}, {x:x+s, y:y}, {x:x+s, y:y+s}, {x:x, y:y+s});
+             } else {
+                 for (let i = 0; i < 6; i++) {
+                     const rad = (Math.PI / 180) * (60 * i - 30);
+                     points.push({ 
+                         x: center.x + params.size * Math.cos(rad), 
+                         y: center.y + params.size * Math.sin(rad) 
+                     });
+                 }
+             }
+             return points;
+        }
+
+        function isPointInPoly(x, y, points) {
+            let inside = false;
+            for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+                const xi = points[i].x, yi = points[i].y;
+                const xj = points[j].x, yj = points[j].y;
+                const intersect = ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+
+        function screenToWorld(mx, my) {
+            return {
+                x: (mx - game.view.offsetX) / game.view.scale,
+                y: (my - game.view.offsetY) / game.view.scale
+            };
+        }
+
+        function calculateDistance(u1, u2) {
+			const r1 = u1.r, c1 = u1.c;
+			const r2 = u2.r, c2 = u2.c;
+			
+			if (mapData.config.gridType === 'square') {
+				const allowDiag = document.getElementById('allowDiagonals').checked;
+				if (allowDiag) {
+					// 允許斜走 (Chebyshev)：對角線算 1 格 (國王移動)
+					return Math.max(Math.abs(r1 - r2), Math.abs(c1 - c2));
+				} else {
+					// 禁止斜走 (Manhattan)：只能直角移動 (計程車幾何)
+					return Math.abs(r1 - r2) + Math.abs(c1 - c2);
+				}
+			} else {
+				// 六角形維持原樣 (Cube Distance)
+				const convert = (row, col) => {
+					const q = col - (row - (row&1)) / 2;
+					const r = row;
+					return { q, r, s: -q-r };
+				}
+				const a = convert(r1, c1);
+				const b = convert(r2, c2);
+				return (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.s - b.s)) / 2;
+			}
+		}
+
+        // --- 繪圖 ---
+        function drawMap() {
+            const ctx = mapCtx;
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
+            ctx.translate(game.view.offsetX, game.view.offsetY);
+            ctx.scale(game.view.scale, game.view.scale);
+
+            const params = getGridParams();
+            
+            for (let key in mapData.data.filled) {
+                const [r, c] = key.split(',').map(Number);
+                const points = getCellPoly(r, c, params);
+                ctx.fillStyle = mapData.data.filled[key];
+                ctx.beginPath();
+                ctx.moveTo(points[0].x, points[0].y);
+                for(let i=1; i<points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+                ctx.fill();
+            }
+
+            ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+            ctx.lineWidth = 1 / game.view.scale;
+            ctx.beginPath();
+            for(let r=0; r<mapData.config.rows; r++) {
+                for(let c=0; c<mapData.config.cols; c++) {
+                    const points = getCellPoly(r, c, params);
+                    ctx.moveTo(points[0].x, points[0].y);
+                    for(let i=1; i<points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+                    ctx.lineTo(points[0].x, points[0].y);
+                }
+            }
+            ctx.stroke();
+
+            if(mapData.data.lines) {
+                mapData.data.lines.forEach(line => {
+                    if(line.path && line.path.length > 1) {
+                        ctx.beginPath();
+                        ctx.strokeStyle = line.color;
+                        ctx.lineWidth = line.width;
+                        ctx.lineCap = 'round';
+                        ctx.lineJoin = 'round';
+                        if (line.style === 'dashed') ctx.setLineDash([line.width*3, line.width*2]);
+                        else ctx.setLineDash([]);
+                        ctx.moveTo(line.path[0].x, line.path[0].y);
+                        for(let i=1; i<line.path.length; i++) ctx.lineTo(line.path[i].x, line.path[i].y);
+                        ctx.stroke();
+                    }
+                });
+            }
+        }
+
+        function drawUnits() {
+            const ctx = unitCtx;
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, unitCanvas.width, unitCanvas.height);
+            ctx.translate(game.view.offsetX, game.view.offsetY);
+            ctx.scale(game.view.scale, game.view.scale);
+
+            const params = getGridParams();
+            const unitSize = (params.type === 'square' ? params.size : params.size * 1.7) * 0.9;
+            const halfSize = unitSize / 2;
+
+            // 1. Line & Distance
+            if (game.selection.friendly && game.selection.hostile) {
+                const u1 = game.units.find(u => u.id === game.selection.friendly);
+                const u2 = game.units.find(u => u.id === game.selection.hostile);
+                if (u1 && u2) {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.strokeStyle = '#e74c3c';
+                    ctx.lineWidth = 2 / game.view.scale;
+                    ctx.setLineDash([10, 10]);
+                    ctx.moveTo(u1.x, u1.y);
+                    ctx.lineTo(u2.x, u2.y);
+                    ctx.stroke();
+                    
+                    const dist = Math.floor(calculateDistance(u1, u2));
+                    const midX = (u1.x + u2.x) / 2;
+                    const midY = (u1.y + u2.y) / 2;
+                    
+                    ctx.setLineDash([]);
+                    ctx.font = `bold ${14/game.view.scale}px sans-serif`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    
+                    const text = `${dist}`;
+                    const padding = 6 / game.view.scale;
+                    const tm = ctx.measureText(text);
+                    const tw = tm.width;
+                    const th = 14/game.view.scale; 
+
+                    ctx.fillStyle = 'black';
+                    ctx.fillRect(midX - tw/2 - padding, midY - th/2 - padding, tw + padding*2, th + padding*2);
+                    
+                    ctx.fillStyle = 'white';
+                    ctx.fillText(text, midX, midY);
+                    
+                    ctx.restore();
+                }
+            }
+
+            // 2. Units
+            const renderList = [...game.units].sort((a,b) => {
+                const aSel = (a.id === game.selection.friendly || a.id === game.selection.hostile);
+                const bSel = (b.id === game.selection.friendly || b.id === game.selection.hostile);
+                return aSel === bSel ? 0 : aSel ? 1 : -1;
+            });
+
+            renderList.forEach(u => {
+                const data = u.isFlipped ? u.libData.back : u.libData.front;
+                const isFriendly = u.faction === 'friendly';
+                const isSelected = (u.id === game.selection.friendly || u.id === game.selection.hostile);
+
+                ctx.save();
+                ctx.translate(u.x, u.y);
+
+                if (game.draggedUnit === u) {
+                    ctx.shadowColor = "rgba(0,0,0,0.5)";
+                    ctx.shadowBlur = 10;
+                    ctx.scale(1.1, 1.1);
+                } else {
+                    ctx.shadowColor = "rgba(0,0,0,0.3)";
+                    ctx.shadowBlur = 4;
+                }
+
+                // 選取變色邏輯
+                if (isSelected) {
+                    ctx.fillStyle = isFriendly ? '#2ecc71' : '#ff6b6b'; 
+                } else {
+                    ctx.fillStyle = isFriendly ? '#27ae60' : '#c0392b';
+                }
+                
+                drawRoundedRect(ctx, -halfSize, -halfSize, unitSize, unitSize, unitSize * 0.15);
+                ctx.fill();
+
+                const innerSize = unitSize * 0.92;
+                const innerHalf = innerSize / 2;
+                
+                ctx.beginPath();
+                drawRoundedRect(ctx, -innerHalf, -innerHalf, innerSize, innerSize, innerSize * 0.12);
+                ctx.clip();
+                ctx.fillStyle = 'white';
+                ctx.fill();
+
+                if (data.imgObj) ctx.drawImage(data.imgObj, -innerHalf, -innerHalf, innerSize, innerSize);
+
+                ctx.restore(); 
+                ctx.save(); 
+                ctx.translate(u.x, u.y);
+                if (game.draggedUnit === u) ctx.scale(1.1, 1.1);
+
+                // Name (Bottom-Left, White)
+                const name = u.libData.name;
+                if (name) {
+                    ctx.font = `bold ${unitSize * 0.22}px sans-serif`;
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'bottom';
+                    
+                    const textX = -halfSize + (unitSize * 0.08);
+                    const textY = halfSize - (unitSize * 0.05);
+
+                    ctx.lineWidth = 3 / game.view.scale;
+                    ctx.strokeStyle = 'black';
+                    ctx.strokeText(name, textX, textY, unitSize * 0.9);
+                    
+                    ctx.fillStyle = 'white';
+                    ctx.fillText(name, textX, textY, unitSize * 0.9);
+                }
+
+                // Counters (Top-Right, Cyan)
+                if (u.counters && u.counters.length > 0) {
+                    const counterText = u.counters.join(' / ');
+                    ctx.font = `bold ${unitSize * 0.22}px sans-serif`;
+                    ctx.textAlign = 'right';
+                    ctx.textBaseline = 'top';
+
+                    const cntX = halfSize - (unitSize * 0.08);
+                    const cntY = -halfSize + (unitSize * 0.05);
+
+                    ctx.lineWidth = 3 / game.view.scale;
+                    ctx.strokeStyle = 'black';
+                    ctx.strokeText(counterText, cntX, cntY, unitSize * 0.9);
+
+                    ctx.fillStyle = '#00ffff'; // Cyan
+                    ctx.fillText(counterText, cntX, cntY, unitSize * 0.9);
+                }
+
+                ctx.restore();
+            });
+        }
+
+        function drawRoundedRect(ctx, x, y, w, h, r) {
+            ctx.beginPath();
+            ctx.moveTo(x+r, y);
+            ctx.arcTo(x+w, y,   x+w, y+h, r);
+            ctx.arcTo(x+w, y+h, x,   y+h, r);
+            ctx.arcTo(x,   y+h, x,   y,   r);
+            ctx.arcTo(x,   y,   x+w, y,   r);
+            ctx.closePath();
+        }
+
+        // --- 檔案處理 ---
+        document.getElementById('fileMap').onchange = function(e) {
+            const file = e.target.files[0];
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                try {
+                    mapData = JSON.parse(evt.target.result);
+                    drawMap();
+                    alert("地圖載入成功");
+                } catch(e) { alert("地圖格式錯誤"); }
+            };
+            reader.readAsText(file);
+        };
+
+        document.getElementById('fileLib').onchange = function(e) {
+            const file = e.target.files[0];
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                try {
+                    const json = JSON.parse(evt.target.result);
+                    if(Array.isArray(json)) {
+                        unitLibrary = json;
+                        unitLibrary.forEach(u => {
+                            if(u.front.image) { u.front.imgObj = new Image(); u.front.imgObj.src = u.front.image; }
+                            if(u.back.image) { u.back.imgObj = new Image(); u.back.imgObj.src = u.back.image; }
+                        });
+                        renderSidebarLib();
+                        alert(`成功載入 ${json.length} 個兵牌`);
+                    }
+                } catch(e) { alert("兵牌庫格式錯誤"); }
+            };
+            reader.readAsText(file);
+        };
+
+        function renderSidebarLib() {
+            const container = document.getElementById('unit-library');
+            container.innerHTML = '';
+            unitLibrary.forEach((u, idx) => {
+                const el = document.createElement('div');
+                el.className = 'lib-item';
+                el.draggable = true;
+                const imgSrc = u.front.image ? u.front.image : '';
+                el.innerHTML = `
+                    <img class="lib-thumb" src="${imgSrc}">
+                    <div style="font-size:0.9rem; font-weight:bold;">${u.name}</div>
+                `;
+                el.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.setData('text/plain', idx);
+                    e.dataTransfer.effectAllowed = 'copy';
+                });
+                container.appendChild(el);
+            });
+        }
+
+        // --- 互動事件 ---
+
+        function bindEvents() {
+			
+			// --- 請將這段程式碼加在 bindEvents 的最開頭 ---
+            // 修正卷軸問題：當滑鼠在 HUD 面板上滾動時，阻止事件傳遞給地圖(防止縮放)，並允許預設滾動
+            document.querySelectorAll('.hud-panel').forEach(panel => {
+                panel.addEventListener('wheel', (e) => {
+                    e.stopPropagation(); // 停止冒泡，不讓 mapCanvas 收到
+                    // 這裡不呼叫 preventDefault()，讓瀏覽器處理內部的卷軸滾動
+                }, { passive: false });
+            });
+            // ---------------------------------------------
+			
+			document.getElementById('btnToggleSidebar').onclick = function() {
+                sidebar.classList.toggle('collapsed');
+                setTimeout(resizeCanvas, 320);
+            };
+
+            container.addEventListener('dragover', e => e.preventDefault());
+            container.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const idx = e.dataTransfer.getData('text/plain');
+                if(idx === '') return;
+                
+                const libUnit = unitLibrary[parseInt(idx)];
+                const rect = unitCanvas.getBoundingClientRect();
+                const mx = e.clientX - rect.left;
+                const my = e.clientY - rect.top;
+                const wPos = screenToWorld(mx, my);
+                
+                const gridPos = getNearestGrid(wPos.x, wPos.y);
+
+                if (gridPos) {
+                    const key = `${gridPos.r},${gridPos.c}`;
+                    if (game.units.some(u => u.gridKey === key)) return;
+
+                    const isHostile = document.getElementById('spawnFaction').checked;
+                    const newUnit = {
+                        id: crypto.randomUUID(),
+                        libData: libUnit,
+                        faction: isHostile ? 'hostile' : 'friendly',
+                        isFlipped: false,
+                        gridKey: key,
+                        x: gridPos.x, y: gridPos.y, r: gridPos.r, c: gridPos.c,
+                        notes: "",
+                        counters: [] // 新增
+                    };
+                    game.units.push(newUnit);
+                    drawUnits();
+                }
+            });
+
+            unitCanvas.addEventListener('mousedown', e => {
+                const rect = unitCanvas.getBoundingClientRect();
+                const mx = e.clientX - rect.left;
+                const my = e.clientY - rect.top;
+                const wPos = screenToWorld(mx, my);
+                
+                const clickedUnit = findUnitAt(wPos.x, wPos.y);
+
+                if (clickedUnit && e.button === 0) { 
+                    game.isDraggingUnit = true;
+                    game.draggedUnit = clickedUnit;
+                    game.dragStartPos = { x: clickedUnit.x, y: clickedUnit.y };
+                    
+                    if (clickedUnit.faction === 'friendly') {
+                        game.selection.friendly = clickedUnit.id;
+                        updateHud('friendly', clickedUnit);
+                    } else {
+                        game.selection.hostile = clickedUnit.id;
+                        updateHud('hostile', clickedUnit);
+                    }
+                    drawUnits();
+
+                } else if (e.button === 2 || e.button === 1) { 
+                    game.isPanning = true;
+                    game.lastMouse = { x: e.clientX, y: e.clientY };
+                    container.style.cursor = 'grabbing';
+                }
+            });
+
+            window.addEventListener('mousemove', e => {
+                if (game.isPanning) {
+                    game.view.offsetX += (e.clientX - game.lastMouse.x);
+                    game.view.offsetY += (e.clientY - game.lastMouse.y);
+                    game.lastMouse = { x: e.clientX, y: e.clientY };
+                    drawMap();
+                    drawUnits();
+                } else if (game.isDraggingUnit && game.draggedUnit) {
+                    const rect = unitCanvas.getBoundingClientRect();
+                    const wPos = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+                    game.draggedUnit.x = wPos.x;
+                    game.draggedUnit.y = wPos.y;
+                    drawUnits(); 
+                }
+            });
+
+            window.addEventListener('mouseup', e => {
+                if (game.isDraggingUnit && game.draggedUnit) {
+                    const rect = unitCanvas.getBoundingClientRect();
+                    const wPos = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+                    const gridPos = getNearestGrid(wPos.x, wPos.y);
+                    
+                    let validMove = false;
+                    if (gridPos) {
+                        const key = `${gridPos.r},${gridPos.c}`;
+                        const occupied = game.units.find(u => u.gridKey === key && u.id !== game.draggedUnit.id);
+                        
+                        if (!occupied) {
+                            game.draggedUnit.x = gridPos.x;
+                            game.draggedUnit.y = gridPos.y;
+                            game.draggedUnit.r = gridPos.r;
+                            game.draggedUnit.c = gridPos.c;
+                            game.draggedUnit.gridKey = key;
+                            validMove = true;
+                        }
+                    }
+
+                    if (!validMove) {
+                        game.draggedUnit.x = game.dragStartPos.x;
+                        game.draggedUnit.y = game.dragStartPos.y;
+                    }
+
+                    game.isDraggingUnit = false;
+                    game.draggedUnit = null;
+                    drawUnits(); 
+                }
+
+                if (game.isPanning) {
+                    game.isPanning = false;
+                    container.style.cursor = 'default';
+                }
+            });
+
+            // Zoom
+            container.addEventListener('wheel', e => {
+                e.preventDefault();
+                const zoomFactor = 0.1;
+                
+                const rect = unitCanvas.getBoundingClientRect();
+                const mx = e.clientX - rect.left;
+                const my = e.clientY - rect.top;
+                
+                const worldX = (mx - game.view.offsetX) / game.view.scale;
+                const worldY = (my - game.view.offsetY) / game.view.scale;
+
+                let newScale = game.view.scale;
+                if (e.deltaY < 0) newScale *= (1 + zoomFactor);
+                else newScale *= (1 - zoomFactor);
+                newScale = Math.max(0.1, Math.min(newScale, 5));
+
+                game.view.offsetX = mx - worldX * newScale;
+                game.view.offsetY = my - worldY * newScale;
+                game.view.scale = newScale;
+
+                drawMap();
+                drawUnits();
+            }, { passive: false });
+            
+            container.addEventListener('contextmenu', e => e.preventDefault());
+			
+			document.getElementById('allowDiagonals').addEventListener('change', () => {
+				drawUnits(); // 重畫以更新距離數字
+			});
+        }
+
+        function findUnitAt(x, y) {
+            const params = getGridParams();
+            const threshold = (params.size * 0.9) / 2; 
+            for (let i = game.units.length - 1; i >= 0; i--) {
+                const u = game.units[i];
+                if (Math.hypot(u.x - x, u.y - y) < threshold) return u;
+            }
+            return null;
+        }
+
+        function getNearestGrid(x, y) {
+            const params = getGridParams();
+            for(let r=0; r<mapData.config.rows; r++) {
+                for(let c=0; c<mapData.config.cols; c++) {
+                    const center = getCellCenter(r, c, params);
+                    const poly = getCellPoly(r, c, params);
+                    if(isPointInPoly(x, y, poly)) {
+                        return { r, c, x: center.x, y: center.y };
+                    }
+                }
+            }
+            return null;
+        }
+
+        function gameLoop() {}
+
+        // --- HUD 邏輯 ---
+
+        function updateHud(type, unit) {
+            const panel = document.getElementById(type === 'friendly' ? 'hud-friendly' : 'hud-hostile');
+            const prefix = type === 'friendly' ? 'hud-f-' : 'hud-h-';
+            const btnPrefix = type === 'friendly' ? 'btn-f-' : 'btn-h-';
+            
+            const data = unit.isFlipped ? unit.libData.back : unit.libData.front;
+            
+            document.getElementById(prefix + 'name').innerText = unit.libData.name;
+            document.getElementById(prefix + 'text').innerText = data.text || "(無數據)";
+            document.getElementById(prefix + 'img').src = data.image || "";
+            document.getElementById(prefix + 'img').style.display = data.image ? 'block' : 'none';
+
+            // 備註
+            const noteArea = document.getElementById(prefix + 'note');
+            noteArea.value = unit.notes || "";
+            const newNoteArea = noteArea.cloneNode(true);
+            noteArea.parentNode.replaceChild(newNoteArea, noteArea);
+            newNoteArea.addEventListener('input', (e) => { unit.notes = e.target.value; });
+
+            // Counters Logic
+            const counterContainer = document.getElementById(prefix + 'counters-container');
+            counterContainer.innerHTML = '';
+            
+            if(!unit.counters) unit.counters = [];
+
+            unit.counters.forEach((val, idx) => {
+                const wrap = document.createElement('div');
+                wrap.className = 'counter-wrapper';
+                
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.className = 'counter-input';
+                input.value = val;
+                input.onchange = (e) => {
+                    unit.counters[idx] = parseInt(e.target.value);
+                    drawUnits(); // 即時更新地圖
+                };
+
+                const btnDel = document.createElement('button');
+                btnDel.innerText = '×';
+                btnDel.className = 'counter-del';
+                btnDel.onclick = () => {
+                    unit.counters.splice(idx, 1);
+                    updateHud(type, unit); // 重繪 HUD
+                    drawUnits();
+                };
+
+                wrap.appendChild(input);
+                wrap.appendChild(btnDel);
+                counterContainer.appendChild(wrap);
+            });
+
+            // Add Counter Button
+            const btnAdd = document.getElementById(btnPrefix + 'add-counter');
+            const newBtnAdd = btnAdd.cloneNode(true);
+            btnAdd.parentNode.replaceChild(newBtnAdd, btnAdd);
+            newBtnAdd.onclick = () => {
+                unit.counters.push(0);
+                updateHud(type, unit);
+                drawUnits();
+            };
+
+            // Buttons
+            const btnFlip = document.getElementById(btnPrefix + 'flip');
+            const btnRemove = document.getElementById(btnPrefix + 'remove');
+
+            const newFlip = btnFlip.cloneNode(true);
+            btnFlip.parentNode.replaceChild(newFlip, btnFlip);
+            
+            const newRemove = btnRemove.cloneNode(true);
+            btnRemove.parentNode.replaceChild(newRemove, btnRemove);
+
+            newFlip.onclick = () => {
+                unit.isFlipped = !unit.isFlipped;
+                updateHud(type, unit); 
+                drawUnits();
+            };
+
+            newRemove.onclick = () => {
+                if(confirm("確定移除此單位？")) {
+                    game.units = game.units.filter(u => u.id !== unit.id);
+                    if(game.selection[type] === unit.id) game.selection[type] = null;
+                    panel.style.display = 'none';
+                    drawUnits();
+                }
+            };
+
+            panel.style.display = 'block';
+        }
+
+        game.deselect = function(type) {
+            game.selection[type] = null;
+            document.getElementById(type === 'friendly' ? 'hud-friendly' : 'hud-hostile').style.display = 'none';
+            drawUnits(); 
+        };
+
+        init();
+    </script>
+</body>
+</html>
