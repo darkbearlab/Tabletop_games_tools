@@ -285,7 +285,7 @@
 <body>
 
     <div id="sidebar">
-        <h2>VTT 虛擬桌面</h2>
+        <h2>VTT 虛擬桌面 v6.3</h2>
         
         <details open>
             <summary>1. 檔案資源</summary>
@@ -307,13 +307,13 @@
                     <span class="faction-label fs-friendly">我方 (Friendly)</span>
                     <span class="faction-label fs-hostile">敵方 (Hostile)</span>
                 </label>
+                <div style="margin-top:8px; padding-top:8px; border-top:1px dashed #ccc;">
+                    <label style="font-size:0.85rem; color:#555; display:flex; align-items:center; cursor:pointer;">
+                        <input type="checkbox" id="allowDiagonals" checked style="margin-right:6px;"> 
+                        允許斜向移動 (僅方格)
+                    </label>
+                </div>
             </div>
-			<div style="margin-top:8px; padding-top:8px; border-top:1px dashed #ccc;">
-				<label style="font-size:0.85rem; color:#555; display:flex; align-items:center; cursor:pointer;">
-					<input type="checkbox" id="allowDiagonals" checked style="margin-right:6px;"> 
-					允許斜向移動 (僅方格)
-				</label>
-			</div>
         </details>
 
         <details open>
@@ -324,10 +324,7 @@
                 </div>
             </div>
         </details>
-        
-        <div style="margin-top:auto; font-size:0.8rem; color:#666; padding-top:10px;">
-            提示：滾輪以滑鼠為中心縮放
-        </div>
+
     </div>
 
     <div id="game-area">
@@ -490,30 +487,27 @@
         }
 
         function calculateDistance(u1, u2) {
-			const r1 = u1.r, c1 = u1.c;
-			const r2 = u2.r, c2 = u2.c;
-			
-			if (mapData.config.gridType === 'square') {
-				const allowDiag = document.getElementById('allowDiagonals').checked;
-				if (allowDiag) {
-					// 允許斜走 (Chebyshev)：對角線算 1 格 (國王移動)
-					return Math.max(Math.abs(r1 - r2), Math.abs(c1 - c2));
-				} else {
-					// 禁止斜走 (Manhattan)：只能直角移動 (計程車幾何)
-					return Math.abs(r1 - r2) + Math.abs(c1 - c2);
-				}
-			} else {
-				// 六角形維持原樣 (Cube Distance)
-				const convert = (row, col) => {
-					const q = col - (row - (row&1)) / 2;
-					const r = row;
-					return { q, r, s: -q-r };
-				}
-				const a = convert(r1, c1);
-				const b = convert(r2, c2);
-				return (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.s - b.s)) / 2;
-			}
-		}
+            const r1 = u1.r, c1 = u1.c;
+            const r2 = u2.r, c2 = u2.c;
+            
+            if (mapData.config.gridType === 'square') {
+                const allowDiag = document.getElementById('allowDiagonals').checked;
+                if (allowDiag) {
+                    return Math.max(Math.abs(r1 - r2), Math.abs(c1 - c2));
+                } else {
+                    return Math.abs(r1 - r2) + Math.abs(c1 - c2);
+                }
+            } else {
+                const convert = (row, col) => {
+                    const q = col - (row - (row&1)) / 2;
+                    const r = row;
+                    return { q, r, s: -q-r };
+                }
+                const a = convert(r1, c1);
+                const b = convert(r2, c2);
+                return (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.s - b.s)) / 2;
+            }
+        }
 
         // --- 繪圖 ---
         function drawMap() {
@@ -616,7 +610,7 @@
                 }
             }
 
-            // 2. Units
+            // 2. Units (Render Loop)
             const renderList = [...game.units].sort((a,b) => {
                 const aSel = (a.id === game.selection.friendly || a.id === game.selection.hostile);
                 const bSel = (b.id === game.selection.friendly || b.id === game.selection.hostile);
@@ -692,14 +686,31 @@
                     ctx.textBaseline = 'top';
 
                     const cntX = halfSize - (unitSize * 0.08);
-                    const cntY = -halfSize + (unitSize * 0.05);
+                    const cntY = -halfSize + (unitSize * 0.08);
 
                     ctx.lineWidth = 3 / game.view.scale;
                     ctx.strokeStyle = 'black';
                     ctx.strokeText(counterText, cntX, cntY, unitSize * 0.9);
 
-                    ctx.fillStyle = '#00ffff'; // Cyan
+                    ctx.fillStyle = '#00ffff'; 
                     ctx.fillText(counterText, cntX, cntY, unitSize * 0.9);
+                }
+
+                // R Marker (Move to above name)
+                if (u.isFlipped) {
+                    ctx.font = `bold ${unitSize * 0.25}px sans-serif`; 
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'bottom'; // Changed to stack above name
+
+                    const indX = -halfSize + (unitSize * 0.08); 
+                    const indY = halfSize - (unitSize * 0.3); // Position above the name
+
+                    ctx.lineWidth = 3 / game.view.scale;
+                    ctx.strokeStyle = 'black';
+                    ctx.strokeText("R", indX, indY);
+
+                    ctx.fillStyle = '#ffcc00'; 
+                    ctx.fillText("R", indX, indY);
                 }
 
                 ctx.restore();
@@ -775,21 +786,21 @@
         // --- 互動事件 ---
 
         function bindEvents() {
-			
-			// --- 請將這段程式碼加在 bindEvents 的最開頭 ---
-            // 修正卷軸問題：當滑鼠在 HUD 面板上滾動時，阻止事件傳遞給地圖(防止縮放)，並允許預設滾動
+            // Scroll Fix
             document.querySelectorAll('.hud-panel').forEach(panel => {
                 panel.addEventListener('wheel', (e) => {
-                    e.stopPropagation(); // 停止冒泡，不讓 mapCanvas 收到
-                    // 這裡不呼叫 preventDefault()，讓瀏覽器處理內部的卷軸滾動
+                    e.stopPropagation();
                 }, { passive: false });
             });
-            // ---------------------------------------------
-			
-			document.getElementById('btnToggleSidebar').onclick = function() {
+
+            document.getElementById('btnToggleSidebar').onclick = function() {
                 sidebar.classList.toggle('collapsed');
                 setTimeout(resizeCanvas, 320);
             };
+            
+            document.getElementById('allowDiagonals').addEventListener('change', () => {
+                drawUnits(); 
+            });
 
             container.addEventListener('dragover', e => e.preventDefault());
             container.addEventListener('drop', (e) => {
@@ -933,10 +944,6 @@
             }, { passive: false });
             
             container.addEventListener('contextmenu', e => e.preventDefault());
-			
-			document.getElementById('allowDiagonals').addEventListener('change', () => {
-				drawUnits(); // 重畫以更新距離數字
-			});
         }
 
         function findUnitAt(x, y) {
@@ -974,7 +981,10 @@
             
             const data = unit.isFlipped ? unit.libData.back : unit.libData.front;
             
-            document.getElementById(prefix + 'name').innerText = unit.libData.name;
+            // 翻面文字更新
+            const displayName = unit.libData.name + (unit.isFlipped ? " (已翻面)" : "");
+            document.getElementById(prefix + 'name').innerText = displayName;
+
             document.getElementById(prefix + 'text').innerText = data.text || "(無數據)";
             document.getElementById(prefix + 'img').src = data.image || "";
             document.getElementById(prefix + 'img').style.display = data.image ? 'block' : 'none';
@@ -1019,7 +1029,7 @@
                 counterContainer.appendChild(wrap);
             });
 
-            // Add Counter Button
+            // Add Counter Button (Fixed: ID prefix)
             const btnAdd = document.getElementById(btnPrefix + 'add-counter');
             const newBtnAdd = btnAdd.cloneNode(true);
             btnAdd.parentNode.replaceChild(newBtnAdd, btnAdd);
