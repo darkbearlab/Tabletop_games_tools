@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DBL's Opposed Roll</title>
+    <style>
+        :root {
+            /* 奇幻配色定調 */
+            --p1-primary: #c0392b; /* 深紅 */
+            --p1-glow: #e74c3c;
+            --p2-primary: #2980b9; /* 深藍 */
+            --p2-glow: #3498db;
+            --bg-color: #121212;
+            --bg-gradient: radial-gradient(circle at center, #2c3e50 0%, #000000 100%);
+            --text-color: #ecf0f1; /* 羊皮紙白 */
+            --border-color: #7f8c8d; /* 石頭/金屬邊框 */
+            --dice-bg: #d5d8dc; /* 骨製/石製骰子底色 */
+            --dice-text: #2c3e50;
+            --strike-color: #e70000; /* 鮮紅槓線 */
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg-color);
+            background-image: var(--bg-gradient);
+            color: var(--text-color);
+            /* 改用襯線體營造奇幻/古典感 */
+            font-family: "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* 區域通用樣式 */
+        .player-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            padding: 20px;
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .top-section {
+            border-bottom: 3px solid var(--border-color);
+            color: var(--p1-glow);
+            border-left-color: var(--p1-primary);
+            border-right-color: var(--p1-primary);
+            background: linear-gradient(to bottom, rgba(192, 57, 43, 0.2), transparent);
+        }
+
+        .bottom-section {
+            border-top: 3px solid var(--border-color);
+            color: var(--p2-glow);
+            border-left-color: var(--p2-primary);
+            border-right-color: var(--p2-primary);
+            background: linear-gradient(to top, rgba(41, 128, 185, 0.2), transparent);
+        }
+
+        /* 控制器樣式 */
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 25px;
+            z-index: 10;
+            background: rgba(0,0,0,0.3);
+            padding: 10px 20px;
+            border-radius: 50px;
+            border: 2px solid var(--border-color);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .btn-adjust {
+            width: 55px;
+            height: 55px;
+            border-radius: 50%;
+            border: 3px solid currentColor;
+            background: rgba(0,0,0,0.5);
+            color: inherit;
+            font-size: 2rem;
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            text-shadow: 0 0 10px currentColor;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+            transition: all 0.2s;
+        }
+
+        .btn-adjust:active {
+            transform: scale(0.9);
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+        }
+
+        .dice-count-display {
+            font-size: 3.5rem;
+            font-weight: bold;
+            min-width: 70px;
+            text-align: center;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+
+        .label {
+            font-size: 1.2rem;
+            font-weight: bold;
+            opacity: 0.9;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            text-shadow: 0 0 5px currentColor;
+        }
+
+        /* 中間的 ROLL 按鈕 - 魔法法陣風格 */
+        .center-action {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 20;
+        }
+
+        .btn-roll {
+            width: 110px;
+            height: 110px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #ecf0f1 40%, #bdc3c7 100%);
+            color: #2c3e50;
+            border: 5px solid var(--border-color);
+            font-size: 1.6rem;
+            font-weight: 900;
+            cursor: pointer;
+            box-shadow: 
+                0 0 0 4px rgba(0,0,0,0.5),
+                0 0 30px 5px rgba(236, 240, 241, 0.4); /* 外發光 */
+            transition: all 0.15s;
+            font-family: inherit;
+            text-shadow: 1px 1px 0px #fff;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        /* 增加一個內部光暈效果 */
+        .btn-roll::after {
+            content: '';
+            position: absolute;
+            top: -50%; left: -50%;
+            width: 200%; height: 200%;
+            background: radial-gradient(rgba(255,255,255,0.8), transparent 60%);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .btn-roll:active {
+            transform: scale(0.92);
+            box-shadow: 0 0 10px 2px rgba(236, 240, 241, 0.2);
+        }
+        .btn-roll:active::after {
+            opacity: 1;
+        }
+
+        /* --- 結果顯示區域 (重頭戲) --- */
+        .result-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9); /* 更深的背景 */
+            backdrop-filter: blur(5px);
+            z-index: 30;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .result-overlay.active {
+            display: flex;
+        }
+
+        .result-dice-container {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin: 15px 0;
+            min-height: 60px;
+            padding: 10px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        /* 骰子樣式調整 - Unicode */
+        .die {
+            width: 50px;
+            height: 50px;
+            background: var(--dice-bg);
+            color: var(--dice-text);
+            border-radius: 8px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 3.5rem; /* Unicode 骰子需要大字體 */
+            line-height: 50px;
+            box-shadow: 3px 3px 0 rgba(0,0,0,0.4), inset 0 0 5px rgba(0,0,0,0.2);
+            border: 2px solid #7f8c8d;
+            position: relative; /* 為了放紅線 */
+            overflow: hidden;
+        }
+
+        /* 使用特定字體確保 Unicode 骰子顯示一致 */
+        .die span {
+            font-family: "Segoe UI Symbol", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+            margin-top: -4px; /* 微調垂直置中 */
+        }
+
+        /* 被抵銷的骰子 (平手) */
+        .die.eliminated {
+            opacity: 0.4;
+            background: #555;
+            color: #1a1a1a;
+            border-color: #333;
+            box-shadow: none;
+            filter: grayscale(100%);
+        }
+
+        /* 輸家剩下的骰子 - 紅色槓線 */
+        .die.loser-marked::after {
+            content: '';
+            position: absolute;
+            width: 150%;
+            height: 4px;
+            background-color: var(--strike-color);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-45deg);
+            box-shadow: 0 0 4px var(--strike-color);
+            z-index: 5;
+        }
+        /* 讓被槓掉的骰子稍微暗一點，突出紅線 */
+        .die.loser-marked {
+             filter: brightness(0.8);
+        }
+
+
+        .die.p1 { border-color: var(--p1-primary); color: #5a1a1a; }
+        .die.p2 { border-color: var(--p2-primary); color: #1a3a5a; }
+
+        .result-label {
+            font-size: 1.1rem;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+            text-shadow: 0 0 5px currentColor;
+        }
+        .label-p1 { color: var(--p1-glow); }
+        .label-p2 { color: var(--p2-glow); color: var(--p2-glow); margin-top: 10px;}
+
+        .result-message {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin: 25px 0 10px 0;
+            text-align: center;
+            text-shadow: 2px 2px 8px rgba(0,0,0,0.8);
+            text-transform: uppercase;
+        }
+        
+        .score-display {
+            font-size: 1.5rem;
+            color: #bdc3c7;
+            margin-bottom: 30px;
+            font-weight: bold;
+        }
+
+        .btn-close {
+            padding: 12px 40px;
+            font-size: 1.3rem;
+            background: transparent;
+            border: 3px solid var(--border-color);
+            color: var(--text-color);
+            border-radius: 50px;
+            cursor: pointer;
+            font-family: inherit;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            transition: all 0.2s;
+        }
+        .btn-close:hover {
+             background: rgba(255,255,255,0.1);
+             box-shadow: 0 0 15px rgba(255,255,255,0.3);
+        }
+
+        .winner-p1 { color: var(--p1-glow); text-shadow: 0 0 15px var(--p1-primary); }
+        .winner-p2 { color: var(--p2-glow); text-shadow: 0 0 15px var(--p2-primary); }
+        .draw { color: #bdc3c7; text-shadow: 0 0 15px #7f8c8d; }
+
+    </style>
+</head>
+<body>
+
+    <div class="player-section top-section">
+        <div class="label">Active (Red)</div>
+        <div class="controls">
+            <button class="btn-adjust" onclick="adjustDice('p1', -1)">-</button>
+            <div class="dice-count-display" id="p1-count">2</div>
+            <button class="btn-adjust" onclick="adjustDice('p1', 1)">+</button>
+        </div>
+    </div>
+
+    <div class="center-action">
+        <button class="btn-roll" onclick="rollDice()">ROLL</button>
+    </div>
+
+    <div class="player-section bottom-section">
+        <div class="controls">
+            <button class="btn-adjust" onclick="adjustDice('p2', -1)">-</button>
+            <div class="dice-count-display" id="p2-count">2</div>
+            <button class="btn-adjust" onclick="adjustDice('p2', 1)">+</button>
+        </div>
+        <div class="label" style="margin-top: 10px; margin-bottom: 0;">Reactive (Blue)</div>
+    </div>
+
+    <div class="result-overlay" id="result-overlay" onclick="closeResult()">
+        <div class="result-label label-p1">Active's Rolls</div>
+        <div class="result-dice-container" id="p1-dice-result">
+            </div>
+
+        <div class="result-message" id="final-result">
+            </div>
+        <div class="score-display" id="final-score">
+            </div>
+
+        <div class="result-dice-container" id="p2-dice-result">
+            </div>
+        <div class="result-label label-p2">Reactive's Rolls</div>
+
+        <button class="btn-close" style="margin-top: 30px;">Close</button>
+    </div>
+
+    <script>
+        // 狀態變數
+        let state = {
+            p1: 2, // 預設 2 顆
+            p2: 2  // 預設 2 顆
+        };
+
+        // Unicode 骰子映射表
+        const diceMap = {
+            1: '⚀', 2: '⚁', 3: '⚂', 4: '⚃', 5: '⚄', 6: '⚅'
+        };
+
+        // 調整骰子數量
+        function adjustDice(player, amount) {
+            state[player] += amount;
+            if (state[player] < 0) state[player] = 0;
+            if (state[player] > 20) state[player] = 20; // 上限
+            
+            document.getElementById(`${player}-count`).textContent = state[player];
+        }
+
+        // 核心擲骰與判定邏輯 (維持不變)
+        function rollDice() {
+            const countA = state.p1;
+            const countB = state.p2;
+            
+            if (countA === 0 && countB === 0) {
+                showNoDiceResult([], [], "draw", 0, "雙方皆無骰子"); return;
+            }
+            if (countA === 0) {
+                showNoDiceResult([], [], "p2", countB, "無骰，自動失敗"); return;
+            }
+            if (countB === 0) {
+                showNoDiceResult([], [], "p1", countA, "無骰，自動失敗"); return;
+            }
+
+            let diceA = Array.from({length: countA}, () => Math.floor(Math.random() * 6) + 1).sort((a,b) => b-a);
+            let diceB = Array.from({length: countB}, () => Math.floor(Math.random() * 6) + 1).sort((a,b) => b-a);
+
+            let displayA = diceA.map(v => ({val: v, elim: false}));
+            let displayB = diceB.map(v => ({val: v, elim: false}));
+
+            let winner = "draw";
+            let score = 0;
+            let maxLen = Math.max(diceA.length, diceB.length);
+            let decided = false;
+
+            for (let i = 0; i < maxLen; i++) {
+                let valA = diceA[i];
+                let valB = diceB[i];
+
+                if (valA !== undefined && valB !== undefined) {
+                    if (valA > valB) {
+                        winner = "p1"; score = diceA.length - i; decided = true; break;
+                    } else if (valB > valA) {
+                        winner = "p2"; score = diceB.length - i; decided = true; break;
+                    } else {
+                        displayA[i].elim = true; displayB[i].elim = true;
+                    }
+                }
+                else if (valA !== undefined && valB === undefined) {
+                    winner = "p1"; score = diceA.length - i; decided = true; break;
+                }
+                else if (valA === undefined && valB !== undefined) {
+                    winner = "p2"; score = diceB.length - i; decided = true; break;
+                }
+            }
+
+            if (!decided) { winner = "draw"; score = 0; }
+
+            renderResult(displayA, displayB, winner, score);
+        }
+
+        // 處理 0 骰的特殊顯示
+        function showNoDiceResult(diceA, diceB, winner, score, customMsg) {
+             renderResult(diceA, diceB, winner, score, customMsg);
+        }
+
+        // 渲染結果畫面 (修改了骰子顯示方式和敗者標記)
+        function renderResult(dispA, dispB, winner, score, customMsg = null) {
+            const diceAEl = document.getElementById('p1-dice-result');
+            const diceBEl = document.getElementById('p2-dice-result');
+            
+            // 產生骰子 HTML 的函數
+            const createDiceHtml = (arr, type) => {
+                if (arr.length === 0) return '<span style="color:#7f8c8d; font-style:italic;">No Rune Stones</span>';
+                
+                return arr.map(d => {
+                    let classes = `die ${type}`;
+                    if (d.elim) {
+                        classes += ' eliminated';
+                    } else {
+                        // 關鍵修改：如果這顆骰子所屬的玩家輸了，且這顆骰子沒被抵銷，加上紅線
+                        if ((winner === 'p2' && type === 'p1') || (winner === 'p1' && type === 'p2')) {
+                            classes += ' loser-marked';
+                        }
+                    }
+                    // 使用 Unicode 映射並包在 span 中以利 CSS 控制
+                    return `<div class="${classes}"><span>${diceMap[d.val]}</span></div>`;
+                }).join('');
+            };
+
+            diceAEl.innerHTML = createDiceHtml(dispA, 'p1');
+            diceBEl.innerHTML = createDiceHtml(dispB, 'p2');
+
+            const msgEl = document.getElementById('final-result');
+            const scoreEl = document.getElementById('final-score');
+
+            if (winner === 'p1') {
+                msgEl.innerHTML = "Success";
+                msgEl.className = "result-message winner-p1";
+            } else if (winner === 'p2') {
+                msgEl.innerHTML = "Fail";
+                msgEl.className = "result-message winner-p2";
+            } else {
+                msgEl.innerHTML = "Draw";
+                msgEl.className = "result-message draw";
+            }
+
+            if (customMsg) {
+                 scoreEl.textContent = customMsg + ` (Score: ${score})`;
+            } else {
+                 scoreEl.textContent = `Score: ${score}`;
+            }
+
+            document.getElementById('result-overlay').classList.add('active');
+        }
+
+        function closeResult() {
+            document.getElementById('result-overlay').classList.remove('active');
+        }
+    </script>
+</body>
+</html>
