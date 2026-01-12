@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>頭像批量裁剪工具</title>
+    <style>
+        :root {
+            --primary: #4a90e2;
+            --bg: #f5f5f5;
+            --box-border: #ff0000;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 頂部控制列 */
+        .toolbar {
+            background: white;
+            padding: 10px 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+            z-index: 100;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            border-right: 1px solid #ddd;
+            padding-right: 15px;
+        }
+        .control-group:last-child { border-right: none; }
+        
+        input[type="number"] { width: 60px; padding: 5px; }
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        button:hover { background-color: #357abd; }
+        button.danger { background-color: #e74c3c; }
+        button.success { background-color: #2ecc71; }
+
+        /* 主工作區 */
+        .workspace-container {
+            flex: 1;
+            overflow: auto;
+            position: relative;
+            background-image: 
+                linear-gradient(45deg, #ccc 25%, transparent 25%), 
+                linear-gradient(-45deg, #ccc 25%, transparent 25%), 
+                linear-gradient(45deg, transparent 75%, #ccc 75%), 
+                linear-gradient(-45deg, transparent 75%, #ccc 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+            padding: 20px;
+        }
+
+        #image-container {
+            position: relative;
+            display: inline-block;
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+            user-select: none; /* 防止拖曳選取文字 */
+        }
+
+        #source-image {
+            display: block;
+            pointer-events: none; /* 讓點擊穿透到 container */
+            max-width: none; /* 保持原始解析度 */
+        }
+
+        /* 裁剪框樣式 */
+        .crop-box {
+            position: absolute;
+            border: 2px solid var(--box-border);
+            background-color: rgba(255, 255, 255, 0.2);
+            cursor: move;
+            box-sizing: border-box;
+        }
+        .crop-box:hover {
+            background-color: rgba(255, 255, 255, 0.4);
+            z-index: 10;
+        }
+        .crop-box.selected {
+            border-color: #00ff00;
+            border-width: 2px;
+            z-index: 20;
+            box-shadow: 0 0 5px rgba(0,0,0,0.5);
+        }
+
+        /* 刪除按鈕 (小叉叉) */
+        .remove-btn {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            width: 20px;
+            height: 20px;
+            background: red;
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 18px;
+            font-size: 14px;
+            cursor: pointer;
+            display: none;
+        }
+        .crop-box:hover .remove-btn, .crop-box.selected .remove-btn {
+            display: block;
+        }
+
+        /* 編號標籤 */
+        .box-label {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            font-size: 10px;
+            padding: 2px 4px;
+            pointer-events: none;
+        }
+
+        /* 調整大小的手柄 */
+        .resize-handle {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: white;
+            border: 1px solid #000;
+            bottom: -5px;
+            right: -5px;
+            cursor: se-resize;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="toolbar">
+        <div class="control-group">
+            <input type="file" id="file-input" accept="image/*">
+        </div>
+        
+        <div class="control-group">
+            <label>預設尺寸:</label>
+            W: <input type="number" id="default-w" value="100">
+            H: <input type="number" id="default-h" value="100">
+            <button onclick="addBoxAtCenter()">+ 新增一個框</button>
+        </div>
+
+        <div class="control-group">
+            <label>批量網格:</label>
+            行: <input type="number" id="grid-rows" value="4" style="width: 40px">
+            列: <input type="number" id="grid-cols" value="4" style="width: 40px">
+            <button onclick="generateGrid()">生成網格</button>
+        </div>
+
+        <div class="control-group">
+            <button class="danger" onclick="clearBoxes()">清空所有框</button>
+        </div>
+
+        <div class="control-group" style="margin-left: auto;">
+            <button class="success" onclick="downloadAll()">下載所有截圖</button>
+        </div>
+    </div>
+
+    <div class="workspace-container">
+        <div id="image-container">
+            </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('file-input');
+        const container = document.getElementById('image-container');
+        let imgElement = null;
+        let selectedBox = null;
+        let boxCounter = 1;
+
+        // 1. 圖片載入邏輯
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                container.innerHTML = ''; // 清空舊圖
+                imgElement = document.createElement('img');
+                imgElement.id = 'source-image';
+                imgElement.src = event.target.result;
+                imgElement.onload = () => {
+                    // 設置容器大小與圖片一致，方便定位
+                    container.style.width = imgElement.naturalWidth + 'px';
+                    container.style.height = imgElement.naturalHeight + 'px';
+                };
+                container.appendChild(imgElement);
+                
+                // 點擊背景可取消選取
+                container.addEventListener('mousedown', (e) => {
+                    if(e.target === container || e.target === imgElement) {
+                        deselectAll();
+                    }
+                });
+            };
+            reader.readAsDataURL(file);
+        });
+
+        // 2. 創建裁剪框的核心函數
+        function createBox(x, y, w, h) {
+            const box = document.createElement('div');
+            box.className = 'crop-box';
+            box.style.left = x + 'px';
+            box.style.top = y + 'px';
+            box.style.width = w + 'px';
+            box.style.height = h + 'px';
+            box.id = 'box-' + Date.now() + Math.random();
+            
+            // 編號
+            const label = document.createElement('div');
+            label.className = 'box-label';
+            label.innerText = boxCounter++;
+            box.appendChild(label);
+
+            // 刪除按鈕
+            const closeBtn = document.createElement('div');
+            closeBtn.className = 'remove-btn';
+            closeBtn.innerText = '×';
+            closeBtn.onclick = (e) => {
+                e.stopPropagation();
+                box.remove();
+            };
+            box.appendChild(closeBtn);
+
+            // 調整大小手柄
+            const resizeHandle = document.createElement('div');
+            resizeHandle.className = 'resize-handle';
+            box.appendChild(resizeHandle);
+
+            // 事件綁定
+            setupBoxInteraction(box, resizeHandle);
+
+            container.appendChild(box);
+            selectBox(box);
+            return box;
+        }
+
+        // 3. 互動邏輯 (拖曳與調整大小)
+        function setupBoxInteraction(box, handle) {
+            
+            // 點擊選取
+            box.addEventListener('mousedown', (e) => {
+                if (e.target === handle || e.target.classList.contains('remove-btn')) return;
+                selectBox(box);
+                
+                // 拖曳邏輯
+                e.preventDefault();
+                const startX = e.clientX;
+                const startY = e.clientY;
+                const startLeft = box.offsetLeft;
+                const startTop = box.offsetTop;
+
+                function doDrag(moveEvent) {
+                    const dx = moveEvent.clientX - startX;
+                    const dy = moveEvent.clientY - startY;
+                    box.style.left = (startLeft + dx) + 'px';
+                    box.style.top = (startTop + dy) + 'px';
+                }
+
+                function stopDrag() {
+                    document.removeEventListener('mousemove', doDrag);
+                    document.removeEventListener('mouseup', stopDrag);
+                }
+
+                document.addEventListener('mousemove', doDrag);
+                document.addEventListener('mouseup', stopDrag);
+            });
+
+            // 調整大小邏輯
+            handle.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                selectBox(box);
+
+                const startX = e.clientX;
+                const startY = e.clientY;
+                const startW = box.offsetWidth;
+                const startH = box.offsetHeight;
+
+                function doResize(moveEvent) {
+                    const w = startW + (moveEvent.clientX - startX);
+                    const h = startH + (moveEvent.clientY - startY);
+                    if (w > 10) box.style.width = w + 'px';
+                    if (h > 10) box.style.height = h + 'px';
+                }
+
+                function stopResize() {
+                    document.removeEventListener('mousemove', doResize);
+                    document.removeEventListener('mouseup', stopResize);
+                }
+
+                document.addEventListener('mousemove', doResize);
+                document.addEventListener('mouseup', stopResize);
+            });
+        }
+
+        // 4. 輔助功能
+        function selectBox(box) {
+            if (selectedBox) selectedBox.classList.remove('selected');
+            selectedBox = box;
+            box.classList.add('selected');
+        }
+
+        function deselectAll() {
+            if (selectedBox) selectedBox.classList.remove('selected');
+            selectedBox = null;
+        }
+
+        function addBoxAtCenter() {
+            if (!imgElement) return alert('請先上傳圖片');
+            const w = parseInt(document.getElementById('default-w').value) || 100;
+            const h = parseInt(document.getElementById('default-h').value) || 100;
+            // 放在視窗中心 (簡單處理：放在圖片左上角偏移一點)
+            createBox(50, 50, w, h);
+        }
+
+        function generateGrid() {
+            if (!imgElement) return alert('請先上傳圖片');
+            const rows = parseInt(document.getElementById('grid-rows').value);
+            const cols = parseInt(document.getElementById('grid-cols').value);
+            const w = parseInt(document.getElementById('default-w').value);
+            const h = parseInt(document.getElementById('default-h').value);
+            
+            const gap = 10; // 預設間距
+            
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    createBox(c * (w + gap), r * (h + gap), w, h);
+                }
+            }
+        }
+
+        function clearBoxes() {
+            const boxes = document.querySelectorAll('.crop-box');
+            boxes.forEach(b => b.remove());
+            boxCounter = 1;
+        }
+
+        // 鍵盤微調
+        document.addEventListener('keydown', (e) => {
+            if (!selectedBox) return;
+            
+            const step = e.shiftKey ? 10 : 1; // 按住 Shift 移動快一點
+            let x = selectedBox.offsetLeft;
+            let y = selectedBox.offsetTop;
+
+            switch(e.key) {
+                case 'ArrowUp': y -= step; break;
+                case 'ArrowDown': y += step; break;
+                case 'ArrowLeft': x -= step; break;
+                case 'ArrowRight': x += step; break;
+                case 'Delete': 
+                    selectedBox.remove(); 
+                    selectedBox = null;
+                    return;
+                default: return;
+            }
+            
+            e.preventDefault();
+            selectedBox.style.left = x + 'px';
+            selectedBox.style.top = y + 'px';
+        });
+
+        // 5. 下載功能
+        function downloadAll() {
+            const boxes = document.querySelectorAll('.crop-box');
+            if (boxes.length === 0) return alert('沒有選取範圍');
+            if (!imgElement) return;
+
+            // 創建一個隱藏的 canvas 用於裁剪
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            // 為了避免瀏覽器攔截多次下載，使用延遲
+            boxes.forEach((box, index) => {
+                setTimeout(() => {
+                    const w = box.offsetWidth - 4; // 扣除邊框(2px*2)
+                    const h = box.offsetHeight - 4;
+                    // 注意：這裡使用 box.offsetLeft 是相對於 container (即圖片) 的位置
+                    // 由於我們將 container 設為圖片原始大小，所以這裡的座標就是圖片像素座標
+                    const x = box.offsetLeft;
+                    const y = box.offsetTop;
+
+                    canvas.width = w;
+                    canvas.height = h;
+
+                    // 裁剪繪製: drawImage(source, sx, sy, sw, sh, dx, dy, dw, dh)
+                    ctx.drawImage(imgElement, x, y, w, h, 0, 0, w, h);
+
+                    // 轉為圖片並下載
+                    const link = document.createElement('a');
+                    link.download = `avatar_${index + 1}.png`;
+                    link.href = canvas.toDataURL('image/png');
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                }, index * 200); // 每個下載間隔 200ms
+            });
+        }
+    </script>
+</body>
+</html>
