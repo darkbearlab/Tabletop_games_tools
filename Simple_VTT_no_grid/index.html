@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>自由移動戰棋 VTT v2.2</title>
+    <style>
+        :root {
+            --bg-color: #2c3e50;
+            --panel-bg: #f8f9fa;
+            --text-color: #333;
+            --accent: #8e44ad;
+            --friendly: #27ae60;
+            --hostile: #c0392b;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* --- 側邊欄 --- */
+        #sidebar {
+            width: 320px;
+            background: var(--panel-bg);
+            padding: 15px;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.3);
+            display: flex; flex-direction: column; gap: 12px; z-index: 20;
+            border-right: 1px solid #ccc; overflow-y: auto;
+            transition: width 0.3s ease; white-space: nowrap;
+            flex-shrink: 0; 
+        }
+        #sidebar.collapsed { width: 0; padding: 0; border: none; }
+
+        h2 { margin: 0 0 10px 0; border-bottom: 3px solid var(--accent); color: var(--accent); font-size: 1.2rem; padding-bottom:5px;}
+        
+        details { border: 1px solid #ddd; border-radius: 4px; background: #fff; margin-bottom: 5px; }
+        summary {
+            padding: 8px; cursor: pointer; font-weight: bold; color: #555; background: #ecf0f1;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .details-content { padding: 10px; }
+
+        button {
+            padding: 8px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer;
+            background: #ecf0f1; font-weight: bold; width: 100%; margin-bottom: 5px;
+        }
+        button:hover { background: #dfe6e9; }
+        
+        .lib-item { display: flex; align-items: center; gap: 10px; padding: 8px; border-bottom: 1px solid #eee; cursor: grab; background: white; }
+        .lib-thumb { width: 40px; height: 40px; background: #eee; object-fit: cover; border-radius: 50%; border: 1px solid #ccc; }
+
+        .map-inputs { 
+            display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; 
+        }
+        .input-group { display: flex; flex-direction: column; gap: 2px; }
+        .input-group label { font-size: 0.8rem; color: #666; font-weight: bold;}
+        .input-group input { 
+            padding: 6px; border: 1px solid #ccc; border-radius: 4px; width: 100%; box-sizing: border-box; 
+        }
+
+        .faction-switch { display: flex; background: #ddd; border-radius: 20px; padding: 3px; cursor: pointer; width: fit-content; margin-bottom: 10px; }
+        .faction-switch input { display: none; }
+        .faction-label { padding: 5px 12px; border-radius: 16px; font-size: 0.85rem; font-weight: bold; transition: 0.3s; }
+        .fs-friendly { background: white; color: var(--friendly); }
+        .fs-hostile { color: #777; }
+        input:checked ~ .fs-friendly { background: transparent; color: #777; }
+        input:checked ~ .fs-hostile { background: var(--hostile); color: white; }
+
+        #game-area { flex-grow: 1; position: relative; background-color: #333; overflow: hidden; }
+        canvas { position: absolute; top: 0; left: 0; display: block; }
+
+        #btnToggleSidebar {
+            position: absolute; top: 10px; left: 10px; z-index: 100;
+            background: white; border: 1px solid #999; border-radius: 4px;
+            padding: 5px 10px; font-size: 1.2rem; cursor: pointer;
+			width: auto;
+        }
+
+        /* HUD & Windows */
+        .hud-panel {
+            position: absolute; width: 280px; background: rgba(0, 0, 0, 0.9);
+            color: white; padding: 15px; border-radius: 8px; backdrop-filter: blur(4px);
+            display: none; z-index: 50; pointer-events: auto;
+        }
+        #hud-friendly { top: 20px; left: 20px; border-left: 4px solid var(--friendly); }
+        #hud-hostile { bottom: 20px; left: 20px; border-left: 4px solid var(--hostile); }
+
+        .hud-header { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #555; padding-bottom: 10px;}
+        .hud-img { width: 50px; height: 50px; border-radius: 50%; background: #fff; object-fit: cover; border: 2px solid #555; flex-shrink: 0;}
+        .size-control { display: flex; align-items: center; gap: 5px; margin-bottom: 10px; font-size: 0.85rem; color: #aaa; background: rgba(255,255,255,0.1); padding: 5px; border-radius: 4px;}
+        .size-input { width: 50px; background: transparent; border: 1px solid #555; color: white; padding: 2px; text-align: center;}
+        
+        .hud-stats {
+            margin-bottom: 10px; font-size: 0.9rem; color: #ddd; white-space: pre-wrap;
+            max-height: 150px; overflow-y: auto;
+        }
+        .hud-actions { display: flex; gap: 10px; }
+        .hud-btn { flex: 1; padding: 6px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+
+        #note-window {
+            position: absolute; top: 60px; right: 20px; width: 300px; height: 400px;
+            background: white; border-radius: 8px; display: none; z-index: 60;
+            flex-direction: column; resize: both; overflow: hidden; box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+        .win-header { background: var(--accent); color: white; padding: 8px; cursor: move; display: flex; justify-content: space-between; user-select: none;}
+        #global-note { flex-grow: 1; padding: 10px; resize: none; border: none; outline: none; font-family: inherit;}
+
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <h2>自由移動 VTT v2.2</h2>
+        
+        <details open>
+            <summary>1. 地圖設定</summary>
+            <div class="details-content">
+                <div class="map-inputs">
+                    <div class="input-group">
+                        <label>寬度 (英吋)</label>
+                        <input type="number" id="mapW" value="36">
+                    </div>
+                    <div class="input-group">
+                        <label>高度 (英吋)</label>
+                        <input type="number" id="mapH" value="36">
+                    </div>
+                </div>
+                <button id="btnSetBoard">設定尺寸 & 清空地圖</button>
+                <hr style="border:0; border-top:1px dashed #ccc; margin:10px 0;">
+                <button onclick="document.getElementById('fileMapImg').click()">載入地圖圖片</button>
+                <div style="font-size:0.75rem; color:#666; text-align:center;">圖片將自動裁切以填滿尺寸</div>
+                <input type="file" id="fileMapImg" accept="image/*" style="display:none">
+            </div>
+        </details>
+
+        <details open>
+            <summary>2. 部署與工具</summary>
+            <div class="details-content">
+                <button onclick="document.getElementById('fileLib').click()">載入兵牌庫 (.json)</button>
+                <input type="file" id="fileLib" accept=".json" style="display:none">
+                
+                <div style="margin: 10px 0;">
+                    <label class="faction-switch">
+                        <input type="checkbox" id="spawnFaction">
+                        <span class="faction-label fs-friendly">我方 (Friendly)</span>
+                        <span class="faction-label fs-hostile">敵方 (Hostile)</span>
+                    </label>
+                </div>
+
+                <div style="background:#eee; padding:10px; border-radius:4px;">
+                    <div style="font-size:0.85rem; font-weight:bold; margin-bottom:5px;">測量光環 (Template)</div>
+                    <div style="display:flex; gap:5px; margin-bottom:5px;">
+                        <input type="number" id="templateSize" value="25" style="width:60px; padding:4px;"> 
+                        <span style="line-height: 28px; font-size:0.85rem;">mm 直徑</span>
+                    </div>
+                    <button id="btnToggleTemplate">開啟光環</button>
+                    <div style="font-size:0.75rem; color:#666; text-align:center; margin-top:5px;">(右鍵拖曳光環)</div>
+                </div>
+            </div>
+        </details>
+
+        <details open>
+            <summary>3. 兵牌庫</summary>
+            <div id="unit-library" style="max-height: 300px; overflow-y: auto;">
+                <div style="padding:20px; color:#999; text-align:center; font-size:0.9rem;">(尚未載入)</div>
+            </div>
+        </details>
+
+        <div style="margin-top:auto;">
+            <button id="btnOpenNote" style="background:#8e44ad; color:white; border:none;">📝 開啟記事本</button>
+        </div>
+    </div>
+
+    <div id="game-area">
+        <button id="btnToggleSidebar">☰</button>
+        <canvas id="mainCanvas"></canvas>
+
+        <div id="hud-friendly" class="hud-panel">
+            <button class="btn-close" style="float:right; border:none; background:none; color:#aaa; cursor:pointer;" onclick="game.deselect('friendly')">×</button>
+            <div class="hud-header">
+                <img class="hud-img" id="hud-f-img">
+                <div>
+                    <div class="hud-title" id="hud-f-name">Name</div>
+                    <div style="font-size:0.8rem; color:#2ecc71;">Friendly</div>
+                </div>
+            </div>
+            <div class="size-control">
+                <label>直徑:</label> <input type="number" id="hud-f-size" class="size-input"> mm
+            </div>
+            <div class="hud-stats" id="hud-f-text"></div>
+            <textarea class="hud-note" id="hud-f-note" rows="2"></textarea>
+            <div class="hud-actions">
+                <button class="hud-btn" style="background:#f39c12; color:white;" id="btn-f-flip">翻面</button>
+                <button class="hud-btn" style="background:#c0392b; color:white;" id="btn-f-remove">移除</button>
+            </div>
+        </div>
+
+        <div id="hud-hostile" class="hud-panel">
+            <button class="btn-close" style="float:right; border:none; background:none; color:#aaa; cursor:pointer;" onclick="game.deselect('hostile')">×</button>
+            <div class="hud-header">
+                <img class="hud-img" id="hud-h-img">
+                <div>
+                    <div class="hud-title" id="hud-h-name">Name</div>
+                    <div style="font-size:0.8rem; color:#e74c3c;">Hostile</div>
+                </div>
+            </div>
+            <div class="size-control">
+                <label>直徑:</label> <input type="number" id="hud-h-size" class="size-input"> mm
+            </div>
+            <div class="hud-stats" id="hud-h-text"></div>
+            <textarea class="hud-note" id="hud-h-note" rows="2"></textarea>
+            <div class="hud-actions">
+                <button class="hud-btn" style="background:#f39c12; color:white;" id="btn-h-flip">翻面</button>
+                <button class="hud-btn" style="background:#c0392b; color:white;" id="btn-h-remove">移除</button>
+            </div>
+        </div>
+
+        <div id="note-window">
+            <div class="win-header" id="note-header">
+                <span>戰役記錄</span>
+                <span style="cursor:pointer;" onclick="document.getElementById('note-window').style.display='none'">×</span>
+            </div>
+            <textarea id="global-note" placeholder="記錄分數、回合數..."></textarea>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('game-area');
+        const sidebar = document.getElementById('sidebar');
+
+        const PPI = 96; 
+        const MM_TO_PX = 96 / 25.4;
+
+        let game = {
+            board: { w: 36, h: 36 },
+            units: [],
+            selection: { friendly: null, hostile: null },
+            view: { scale: 0.5, offsetX: 0, offsetY: 0 },
+            isPanning: false,
+            isDraggingUnit: false,
+            draggedUnit: null,
+            lastMouse: { x: 0, y: 0 },
+            template: { active: false, x: 0, y: 0, mmSize: 25, isDragging: false },
+            mapImage: null
+        };
+
+        let unitLibrary = [];
+
+        function init() {
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas();
+            centerBoard();
+            bindEvents();
+            draw();
+        }
+
+        function resizeCanvas() {
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            draw();
+        }
+
+        function centerBoard() {
+            const boardPxW = game.board.w * PPI;
+            const boardPxH = game.board.h * PPI;
+            game.view.offsetX = (canvas.width - boardPxW * game.view.scale) / 2;
+            game.view.offsetY = (canvas.height - boardPxH * game.view.scale) / 2;
+        }
+
+        function screenToWorld(mx, my) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: (mx - rect.left - game.view.offsetX) / game.view.scale,
+                y: (my - rect.top - game.view.offsetY) / game.view.scale
+            };
+        }
+
+        function draw() {
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.translate(game.view.offsetX, game.view.offsetY);
+            ctx.scale(game.view.scale, game.view.scale);
+
+            // 1. Draw Board
+            const boardPxW = game.board.w * PPI;
+            const boardPxH = game.board.h * PPI;
+
+            ctx.fillStyle = '#222';
+            ctx.fillRect(-10000, -10000, 20000, 20000);
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(0, 0, boardPxW, boardPxH);
+            ctx.clip();
+
+            ctx.fillStyle = '#ddd';
+            ctx.fillRect(0, 0, boardPxW, boardPxH);
+
+            if (game.mapImage) {
+                const img = game.mapImage;
+                const boardAspect = boardPxW / boardPxH;
+                const imgAspect = img.width / img.height;
+                let rW, rH, rX, rY;
+
+                if (imgAspect > boardAspect) {
+                    rH = boardPxH;
+                    rW = img.width * (boardPxH / img.height);
+                    rX = -(rW - boardPxW) / 2;
+                    rY = 0;
+                } else {
+                    rW = boardPxW;
+                    rH = img.height * (boardPxW / img.width);
+                    rX = 0;
+                    rY = -(rH - boardPxH) / 2;
+                }
+                ctx.drawImage(img, rX, rY, rW, rH);
+            } else {
+                 ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+                 ctx.lineWidth = 2;
+                 const inc = PPI * 6; 
+                 ctx.beginPath();
+                 for(let x=0; x<=boardPxW; x+=inc) { ctx.moveTo(x,0); ctx.lineTo(x, boardPxH); }
+                 for(let y=0; y<=boardPxH; y+=inc) { ctx.moveTo(0,y); ctx.lineTo(boardPxW, y); }
+                 ctx.stroke();
+                 ctx.fillStyle = '#555'; ctx.font = '40px sans-serif'; ctx.textAlign='center';
+                 ctx.fillText(`${game.board.w} x ${game.board.h} Inches`, boardPxW/2, boardPxH/2);
+            }
+            ctx.restore();
+
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 5;
+            ctx.strokeRect(0, 0, boardPxW, boardPxH);
+
+            // 2. LOS Line
+            if (game.selection.friendly && game.selection.hostile) {
+                const u1 = game.units.find(u => u.id === game.selection.friendly);
+                const u2 = game.units.find(u => u.id === game.selection.hostile);
+                if (u1 && u2) {
+                    const distPx = Math.hypot(u1.x - u2.x, u1.y - u2.y);
+                    const distIn = (distPx / PPI).toFixed(1);
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.strokeStyle = '#e74c3c';
+                    ctx.lineWidth = 3 / game.view.scale;
+                    ctx.setLineDash([10, 10]);
+                    ctx.moveTo(u1.x, u1.y);
+                    ctx.lineTo(u2.x, u2.y);
+                    ctx.stroke();
+                    const midX = (u1.x + u2.x) / 2;
+                    const midY = (u1.y + u2.y) / 2;
+                    ctx.font = `bold ${16/game.view.scale}px sans-serif`;
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillStyle = 'black';
+                    const text = `${distIn}"`;
+                    const tm = ctx.measureText(text);
+                    ctx.fillRect(midX - tm.width/2 - 5, midY - 10, tm.width + 10, 20);
+                    ctx.fillStyle = '#ffcc00';
+                    ctx.fillText(text, midX, midY);
+                    ctx.restore();
+                }
+            }
+
+            // 3. Collision
+            game.units.forEach(u => u.isColliding = false);
+            for (let i = 0; i < game.units.length; i++) {
+                for (let j = i + 1; j < game.units.length; j++) {
+                    const u1 = game.units[i];
+                    const u2 = game.units[j];
+                    const dist = Math.hypot(u1.x - u2.x, u1.y - u2.y);
+                    const r1 = (u1.sizeMm * MM_TO_PX) / 2;
+                    const r2 = (u2.sizeMm * MM_TO_PX) / 2;
+                    if (dist < (r1 + r2)) {
+                        u1.isColliding = true;
+                        u2.isColliding = true;
+                    }
+                }
+            }
+
+            // 4. Units
+            const renderList = [...game.units].sort((a,b) => {
+                const aSel = (a.id === game.selection.friendly || a.id === game.selection.hostile);
+                const bSel = (b.id === game.selection.friendly || b.id === game.selection.hostile);
+                return aSel === bSel ? 0 : aSel ? 1 : -1;
+            });
+
+            renderList.forEach(u => {
+                const data = u.isFlipped ? u.libData.back : u.libData.front;
+                const isFriendly = u.faction === 'friendly';
+                const isSelected = (u.id === game.selection.friendly || u.id === game.selection.hostile);
+                const radiusPx = (u.sizeMm * MM_TO_PX) / 2;
+
+                ctx.save();
+                ctx.translate(u.x, u.y);
+
+                if (game.draggedUnit === u) {
+                    ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 15; ctx.scale(1.05, 1.05);
+                } else {
+                    ctx.shadowColor = "rgba(0,0,0,0.3)"; ctx.shadowBlur = 5;
+                }
+
+                ctx.beginPath();
+                ctx.arc(0, 0, radiusPx, 0, Math.PI*2);
+                if (u.isColliding) {
+                    ctx.fillStyle = '#e74c3c'; ctx.lineWidth = 4 / game.view.scale; ctx.strokeStyle = '#c0392b';
+                } else if (isSelected) {
+                    ctx.fillStyle = isFriendly ? '#2ecc71' : '#ff6b6b'; ctx.lineWidth = 0;
+                } else {
+                    ctx.fillStyle = isFriendly ? '#27ae60' : '#c0392b'; ctx.lineWidth = 0;
+                }
+                ctx.fill();
+                if(u.isColliding) ctx.stroke();
+
+                const innerRadius = radiusPx * 0.9;
+                ctx.beginPath(); ctx.arc(0, 0, innerRadius, 0, Math.PI*2); ctx.clip();
+                ctx.fillStyle = 'white'; ctx.fill();
+                if (data.imgObj) ctx.drawImage(data.imgObj, -innerRadius, -innerRadius, innerRadius*2, innerRadius*2);
+                ctx.restore();
+
+                ctx.save();
+                ctx.translate(u.x, u.y);
+                const fontSize = Math.max(10, radiusPx * 0.5);
+                ctx.font = `bold ${fontSize}px sans-serif`;
+                ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+                ctx.lineWidth = 3 / game.view.scale; ctx.strokeStyle = 'black'; ctx.fillStyle = 'white';
+                
+                if (u.libData.name) {
+                    ctx.strokeText(u.libData.name, 0, radiusPx * 0.4);
+                    ctx.fillText(u.libData.name, 0, radiusPx * 0.4);
+                }
+                if (u.isFlipped) {
+                    ctx.font = `bold ${radiusPx}px sans-serif`; ctx.textBaseline = 'middle';
+                    ctx.strokeText("R", 0, 0); ctx.fillStyle = '#f1c40f'; ctx.fillText("R", 0, 0);
+                }
+                ctx.restore();
+            });
+
+            // 5. Template
+            if (game.template.active) {
+                const r = (game.template.mmSize * MM_TO_PX) / 2;
+                ctx.save();
+                ctx.translate(game.template.x, game.template.y);
+                ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI*2);
+                ctx.fillStyle = 'rgba(52, 152, 219, 0.3)'; ctx.fill();
+                ctx.lineWidth = 2 / game.view.scale; ctx.strokeStyle = 'rgba(52, 152, 219, 0.8)'; ctx.stroke();
+                ctx.beginPath(); 
+                ctx.moveTo(-10/game.view.scale,0); ctx.lineTo(10/game.view.scale,0); 
+                ctx.moveTo(0,-10/game.view.scale); ctx.lineTo(0,10/game.view.scale); 
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+
+        // --- Event Handlers ---
+        function bindEvents() {
+            document.getElementById('btnSetBoard').onclick = () => {
+                const w = parseFloat(document.getElementById('mapW').value) || 36;
+                const h = parseFloat(document.getElementById('mapH').value) || 36;
+                game.board = { w, h };
+                game.units = []; 
+                game.mapImage = null; 
+                centerBoard();
+                draw();
+            };
+
+            document.getElementById('btnToggleSidebar').onclick = () => {
+                sidebar.classList.toggle('collapsed');
+                setTimeout(resizeCanvas, 320);
+            };
+            document.querySelectorAll('.hud-panel').forEach(p => p.addEventListener('wheel', e => e.stopPropagation(), {passive:false}));
+
+            const btnTemp = document.getElementById('btnToggleTemplate');
+            const inpTemp = document.getElementById('templateSize');
+            btnTemp.onclick = () => {
+                game.template.active = !game.template.active;
+                game.template.mmSize = parseFloat(inpTemp.value) || 25;
+                btnTemp.style.background = game.template.active ? '#3498db' : '#ecf0f1';
+                btnTemp.style.color = game.template.active ? 'white' : '#333';
+                draw();
+            };
+            inpTemp.onchange = () => { game.template.mmSize = parseFloat(inpTemp.value) || 25; if(game.template.active) draw(); };
+
+            const noteWin = document.getElementById('note-window');
+            document.getElementById('btnOpenNote').onclick = () => noteWin.style.display = 'flex';
+            let noteDrag = { on: false, startX:0, startY:0, l:0, t:0 };
+            document.getElementById('note-header').addEventListener('mousedown', e => {
+                noteDrag = { on: true, startX:e.clientX, startY:e.clientY, l:noteWin.offsetLeft, t:noteWin.offsetTop };
+            });
+
+            canvas.addEventListener('mousedown', e => {
+                const wPos = screenToWorld(e.clientX, e.clientY);
+                
+                if (e.button === 2) {
+                    if (game.template.active) {
+                        const dist = Math.hypot(wPos.x - game.template.x, wPos.y - game.template.y);
+                        if (dist < (game.template.mmSize * MM_TO_PX)/2) {
+                            game.template.isDragging = true;
+                            container.style.cursor = 'move';
+                            return;
+                        }
+                    }
+                    game.isPanning = true;
+                    game.lastMouse = { x: e.clientX, y: e.clientY };
+                    container.style.cursor = 'grabbing';
+                    return;
+                }
+
+                if (e.button === 0) {
+                    let hit = null;
+                    for (let i = game.units.length - 1; i >= 0; i--) {
+                        const u = game.units[i];
+                        const r = (u.sizeMm * MM_TO_PX) / 2;
+                        if (Math.hypot(u.x - wPos.x, u.y - wPos.y) < r) {
+                            hit = u; break;
+                        }
+                    }
+                    if (hit) {
+                        game.isDraggingUnit = true;
+                        game.draggedUnit = hit;
+                        if (hit.faction === 'friendly') {
+                            game.selection.friendly = hit.id; updateHud('friendly', hit);
+                        } else {
+                            game.selection.hostile = hit.id; updateHud('hostile', hit);
+                        }
+                        draw();
+                    }
+                }
+            });
+
+            window.addEventListener('mousemove', e => {
+                if(noteDrag.on) {
+                    noteWin.style.left = (noteDrag.l + e.clientX - noteDrag.startX) + 'px';
+                    noteWin.style.top = (noteDrag.t + e.clientY - noteDrag.startY) + 'px';
+                }
+                if (game.isPanning) {
+                    game.view.offsetX += (e.clientX - game.lastMouse.x);
+                    game.view.offsetY += (e.clientY - game.lastMouse.y);
+                    game.lastMouse = { x: e.clientX, y: e.clientY };
+                    draw();
+                } else if (game.template.isDragging) {
+                    const wPos = screenToWorld(e.clientX, e.clientY);
+                    game.template.x = wPos.x; game.template.y = wPos.y;
+                    draw();
+                } else if (game.isDraggingUnit) {
+                    const wPos = screenToWorld(e.clientX, e.clientY);
+                    game.draggedUnit.x = wPos.x; game.draggedUnit.y = wPos.y;
+                    draw();
+                }
+            });
+
+            window.addEventListener('mouseup', () => {
+                game.isPanning = false; game.isDraggingUnit = false; 
+                game.template.isDragging = false; noteDrag.on = false;
+                container.style.cursor = 'default';
+                draw();
+            });
+
+            canvas.addEventListener('wheel', e => {
+                e.preventDefault();
+                const zoom = 0.1;
+                const wPos = screenToWorld(e.clientX, e.clientY);
+                const rect = canvas.getBoundingClientRect();
+                const cx = e.clientX - rect.left;
+                const cy = e.clientY - rect.top;
+                
+                let s = game.view.scale;
+                s = e.deltaY < 0 ? s * (1+zoom) : s * (1-zoom);
+                s = Math.max(0.1, Math.min(s, 5));
+                
+                game.view.offsetX = cx - wPos.x * s;
+                game.view.offsetY = cy - wPos.y * s;
+                game.view.scale = s;
+                draw();
+            }, {passive:false});
+
+            canvas.addEventListener('contextmenu', e => e.preventDefault());
+            container.addEventListener('dragover', e => e.preventDefault());
+            container.addEventListener('drop', e => {
+                e.preventDefault();
+                const idx = e.dataTransfer.getData('text/plain');
+                if(!idx) return;
+                const libUnit = unitLibrary[parseInt(idx)];
+                const wPos = screenToWorld(e.clientX, e.clientY);
+                const isHostile = document.getElementById('spawnFaction').checked;
+                game.units.push({
+                    id: crypto.randomUUID(), libData: libUnit, faction: isHostile?'hostile':'friendly',
+                    isFlipped: false, sizeMm: 25, x: wPos.x, y: wPos.y, notes: ""
+                });
+                draw();
+            });
+        }
+
+        document.getElementById('fileLib').onchange = e => {
+            const f = e.target.files[0]; if(!f) return;
+            const r = new FileReader();
+            r.onload = evt => {
+                try {
+                    unitLibrary = JSON.parse(evt.target.result);
+                    unitLibrary.forEach(u => {
+                        if(u.front.image) { u.front.imgObj=new Image(); u.front.imgObj.src=u.front.image; }
+                        if(u.back.image) { u.back.imgObj=new Image(); u.back.imgObj.src=u.back.image; }
+                    });
+                    renderLib();
+                    alert("兵牌庫載入成功");
+                } catch(e) { alert("格式錯誤"); }
+            };
+            r.readAsText(f);
+        };
+        document.getElementById('fileMapImg').onchange = e => {
+            const f = e.target.files[0]; if(!f) return;
+            const r = new FileReader();
+            r.onload = evt => {
+                const img = new Image();
+                img.onload = () => { game.mapImage = img; draw(); };
+                img.src = evt.target.result;
+            };
+            r.readAsDataURL(f);
+        };
+
+        function renderLib() {
+            const d = document.getElementById('unit-library'); d.innerHTML = '';
+            unitLibrary.forEach((u, idx) => {
+                const el = document.createElement('div'); el.className = 'lib-item'; el.draggable = true;
+                el.innerHTML = `<img class="lib-thumb" src="${u.front.image||''}"><div>${u.name}</div>`;
+                el.addEventListener('dragstart', e => e.dataTransfer.setData('text/plain', idx));
+                d.appendChild(el);
+            });
+        }
+
+        // --- HUD Logic (CRASH PROOF VERSION) ---
+        function updateHud(type, unit) {
+            const prefix = type==='friendly'?'hud-f-':'hud-h-';
+            const btnPrefix = type==='friendly'?'btn-f-':'btn-h-';
+            const panel = document.getElementById(type==='friendly'?'hud-friendly':'hud-hostile');
+            
+            if(!panel) return; // Safety Check
+
+            const data = unit.isFlipped ? unit.libData.back : unit.libData.front;
+            
+            // Helper to set text safely
+            const setText = (id, txt) => { const el = document.getElementById(id); if(el) el.innerText = txt; };
+            const setSrc = (id, src) => { const el = document.getElementById(id); if(el) { el.src = src; el.style.display = src ? 'block' : 'none'; }};
+
+            setText(prefix+'name', unit.libData.name + (unit.isFlipped?"(R)":""));
+            setText(prefix+'text', data.text || "");
+            setSrc(prefix+'img', data.image || "");
+            
+            // Size Input - No cloneNode
+            const sizeInp = document.getElementById(prefix+'size');
+            if(sizeInp) {
+                // Temporarily remove listener to avoid triggers
+                sizeInp.onchange = null; 
+                sizeInp.value = unit.sizeMm || 25;
+                sizeInp.onchange = (e) => { 
+                    unit.sizeMm = parseFloat(e.target.value)||25; 
+                    draw(); 
+                };
+            }
+
+            // Buttons - Direct assignment instead of cloneNode
+            const btnFlip = document.getElementById(btnPrefix+'flip');
+            if(btnFlip) {
+                btnFlip.onclick = () => { 
+                    unit.isFlipped = !unit.isFlipped; 
+                    updateHud(type, unit); 
+                    draw(); 
+                };
+            }
+
+            const btnRem = document.getElementById(btnPrefix+'remove');
+            if(btnRem) {
+                btnRem.onclick = () => { 
+                    if(confirm("移除?")) {
+                        game.units = game.units.filter(u => u.id !== unit.id); 
+                        if(game.selection[type] === unit.id) game.selection[type] = null;
+                        panel.style.display='none'; 
+                        draw(); 
+                    }
+                };
+            }
+            
+            // Notes
+            const noteArea = document.getElementById(prefix+'note');
+            if(noteArea) {
+                noteArea.oninput = null; // Clear old
+                noteArea.value = unit.notes || "";
+                noteArea.oninput = (e) => { unit.notes = e.target.value; };
+            }
+
+            panel.style.display = 'block';
+        }
+
+        game.deselect = t => { 
+            game.selection[t]=null; 
+            const p = document.getElementById(t==='friendly'?'hud-friendly':'hud-hostile');
+            if(p) p.style.display='none'; 
+            draw(); 
+        };
+
+        init();
+    </script>
+</body>
+</html>
