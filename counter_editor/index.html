@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>兵牌資料編輯器</title>
+    <title>兵牌資料編輯器 v5.1</title>
     <style>
         :root {
             --bg-color: #f0f2f5;
@@ -35,6 +35,9 @@
             overflow-y: auto;
             border-right: 1px solid var(--border);
             z-index: 10;
+            
+            /* --- 關鍵修正：防止左側被擠壓 --- */
+            flex-shrink: 0; 
         }
 
         h2, h3 { margin: 0; color: var(--accent); }
@@ -89,7 +92,7 @@
             z-index: 1;
         }
 
-        /* 修正後的文字樣式：顯示名稱，白字黑邊 */
+        /* 顯示名稱，白字黑邊 */
         .token-text {
             position: absolute;
             z-index: 2;
@@ -104,8 +107,6 @@
             text-overflow: ellipsis;
             line-height: 1.2;
             pointer-events: none; 
-            
-            /* 強制白色字體與黑色重描邊 (配合 VTT v4) */
             color: white !important;
             text-shadow: 
                 2px 0 #000, -2px 0 #000, 0 2px #000, 0 -2px #000,
@@ -140,6 +141,9 @@
         .btn-primary { background-color: var(--highlight); color: white; }
         .btn-primary:hover { background-color: #1f6391; }
         
+        .btn-warning { background-color: #f39c12; color: white; }
+        .btn-warning:hover { background-color: #d35400; }
+
         .btn-success { background-color: #27ae60; color: white; }
         .btn-success:hover { background-color: #219150; }
 
@@ -147,6 +151,9 @@
         .btn-info:hover { background-color: #138496; }
 
         .btn-danger { background-color: #c0392b; color: white; padding: 5px 10px; font-size: 0.8rem;}
+        
+        .btn-secondary { background-color: #95a5a6; color: white; }
+        .btn-secondary:hover { background-color: #7f8c8d; }
 
         /* 右側列表區 */
         #library-panel {
@@ -156,6 +163,8 @@
             display: flex;
             flex-direction: column;
             position: relative;
+            /* 防止 grid 撐爆 flex container */
+            min-width: 0; 
         }
 
         .header-actions {
@@ -166,9 +175,11 @@
 
         #unit-grid {
             display: grid;
+            /* 自動填滿，最小 250px，自動換行 */
             grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
             gap: 15px;
             margin-top: 15px;
+            width: 100%; /* 確保 grid 佔滿容器 */
         }
 
         .unit-card {
@@ -188,6 +199,11 @@
             box-shadow: 0 5px 15px rgba(0,0,0,0.1);
             border-color: var(--highlight);
         }
+        
+        .unit-card.editing {
+            border: 2px solid #f39c12;
+            background-color: #fffaf0;
+        }
 
         .card-img {
             width: 60px;
@@ -206,6 +222,13 @@
         }
         .card-title { font-weight: bold; font-size: 1rem; margin-bottom: 4px; color: var(--accent); }
         .card-subtitle { color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px;}
+
+        /* Card Actions */
+        .card-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
 
         /* 懸停 Tooltip */
         #hover-tooltip {
@@ -252,7 +275,7 @@
     </div>
 
     <div id="editor-panel">
-        <h2>兵牌編輯器</h2>
+        <h2 id="panelTitle">兵牌編輯器 v5.1</h2>
         
         <div class="form-group">
             <label>兵牌名稱 (ID) <span class="hint-text">將顯示於地圖兵牌上</span></label>
@@ -282,7 +305,7 @@
 
         <h3>正面設定</h3>
         <div class="form-group">
-            <label>正面圖片 (若無則白底)</label>
+            <label>正面圖片 (選填，更新時若不選則維持原圖)</label>
             <input type="file" id="fileFront" accept="image/*">
         </div>
         <div class="form-group">
@@ -310,9 +333,12 @@
             <input type="color" id="inpColorBack" value="#ffffff" style="width:40px; height:30px; border:none;">
         </div>
 
-        <div class="actions" style="margin-top:auto; padding-top:15px; display:flex; gap:10px;">
+        <div class="actions" style="margin-top:auto; padding-top:15px; display:flex; flex-direction:column; gap:10px;">
             <button class="btn-primary" id="btnAdd" style="width:100%">加入清單</button>
-            <button id="btnClear" style="width:50%">重置</button>
+            <div style="display:flex; gap:10px;">
+                <button id="btnCancelEdit" class="btn-secondary" style="display:none; width:100%">取消編輯</button>
+                <button id="btnClear" style="width:100%">重置表單</button>
+            </div>
         </div>
     </div>
 
@@ -335,11 +361,13 @@
     <script>
         // --- 資料 ---
         let library = [];
+        let editingIndex = -1;
         let currentFrontBase64 = null;
         let currentBackBase64 = null;
 
         // --- DOM ---
         const ui = {
+            panelTitle: document.getElementById('panelTitle'),
             name: document.getElementById('inpName'),
             fileFront: document.getElementById('fileFront'),
             textFront: document.getElementById('inpTextFront'),
@@ -353,17 +381,15 @@
             prevBack: document.getElementById('prevBack'),
             imgPrevBack: document.getElementById('imgPrevBack'),
             txtPrevBack: document.getElementById('txtPrevBack'),
-            
             btnAdd: document.getElementById('btnAdd'),
             btnClear: document.getElementById('btnClear'),
+            btnCancelEdit: document.getElementById('btnCancelEdit'),
             btnExport: document.getElementById('btnExport'),
             btnImport: document.getElementById('btnImport'),
             fileImport: document.getElementById('fileImport'),
-            
             grid: document.getElementById('unit-grid'),
             count: document.getElementById('countDisplay'),
             canvas: document.getElementById('processCanvas'),
-            
             tooltip: document.getElementById('hover-tooltip'),
             tipImgFront: document.getElementById('tipImgFront'),
             tipTxtFront: document.getElementById('tipTxtFront'),
@@ -388,7 +414,7 @@
 
                     const sSize = Math.min(img.width, img.height);
                     const sx = (img.width - sSize) / 2;
-                    const sy = 0; // Top crop
+                    const sy = 0; 
 
                     ctx.clearRect(0, 0, size, size);
                     if (isMirror) {
@@ -425,14 +451,9 @@
         // --- 編輯器預覽更新 ---
         function updatePreview() {
             const nameText = ui.name.value.trim() || "(未命名)";
-            
-            // 這裡改成顯示 Name
             ui.txtPrevFront.innerText = nameText;
             ui.txtPrevBack.innerText = nameText;
             
-            // 顏色部分我們在 CSS 強制了 White，所以這裡不需要設 Style
-            // 但數據(textFront/Back)仍然是輸入的內容，只是不顯示在圖上
-
             if (currentFrontBase64) {
                 ui.imgPrevFront.src = currentFrontBase64;
                 ui.imgPrevFront.style.display = 'block';
@@ -448,12 +469,12 @@
             }
         }
 
-        // --- 事件監聽 ---
+        // --- 事件監聽 (圖片) ---
         ui.fileFront.addEventListener('change', (e) => {
             const file = e.target.files[0];
             processImage(file, false, (base64) => {
                 currentFrontBase64 = base64;
-                if (currentFrontBase64 && !ui.fileBack.files[0]) {
+                if (currentFrontBase64 && !ui.fileBack.files[0] && !currentBackBase64) {
                     generateMirrorFromBase64(currentFrontBase64, (mirrorBase64) => {
                         currentBackBase64 = mirrorBase64;
                         updatePreview();
@@ -484,24 +505,21 @@
             }
         });
 
-        // 監聽名字輸入，即時更新預覽文字
         ui.name.addEventListener('input', updatePreview);
-        
-        // 監聽顏色變化 (雖然不改變預覽，但這是為了使用者體驗)
-        // ui.colorFront.addEventListener('input', ...); // 不需要特別動作，只是存值
 
+        // --- 加入/更新 按鈕邏輯 ---
         ui.btnAdd.addEventListener('click', () => {
             const name = ui.name.value.trim();
             const uid = crypto.randomUUID().split('-')[0];
             const finalName = name || `Unit-${uid}`;
 
             const unitData = {
-                uid: crypto.randomUUID(), 
+                uid: (editingIndex >= 0) ? library[editingIndex].uid : crypto.randomUUID(),
                 name: finalName,
                 faction: "default",
                 front: {
                     image: currentFrontBase64,
-                    text: ui.textFront.value, // 存入 JSON 供 VTT 彈窗使用
+                    text: ui.textFront.value,
                     textColor: ui.colorFront.value
                 },
                 back: {
@@ -511,12 +529,27 @@
                 }
             };
 
-            library.push(unitData);
+            if (editingIndex >= 0) {
+                library[editingIndex] = unitData;
+                alert(`兵牌「${finalName}」更新成功！`);
+                resetMode();
+            } else {
+                library.push(unitData);
+            }
+
             renderLibrary();
             clearForm();
         });
 
-        ui.btnClear.addEventListener('click', clearForm);
+        ui.btnClear.addEventListener('click', () => {
+            clearForm();
+            resetMode();
+        });
+
+        ui.btnCancelEdit.addEventListener('click', () => {
+            clearForm();
+            resetMode();
+        });
 
         function clearForm() {
             ui.name.value = '';
@@ -529,6 +562,43 @@
             currentFrontBase64 = null;
             currentBackBase64 = null;
             updatePreview();
+        }
+
+        window.loadUnitForEdit = function(index) {
+            const unit = library[index];
+            editingIndex = index;
+
+            ui.name.value = unit.name;
+            ui.textFront.value = unit.front.text;
+            ui.colorFront.value = unit.front.textColor || '#ffffff';
+            ui.textBack.value = unit.back.text;
+            ui.colorBack.value = unit.back.textColor || '#ffffff';
+
+            currentFrontBase64 = unit.front.image;
+            currentBackBase64 = unit.back.image;
+            
+            ui.fileFront.value = '';
+            ui.fileBack.value = '';
+
+            updatePreview();
+
+            ui.panelTitle.innerText = "編輯模式";
+            ui.panelTitle.style.color = "#f39c12";
+            ui.btnAdd.innerText = "更新兵牌";
+            ui.btnAdd.className = "btn-warning";
+            ui.btnCancelEdit.style.display = "block";
+            
+            renderLibrary();
+        };
+
+        function resetMode() {
+            editingIndex = -1;
+            ui.panelTitle.innerText = "兵牌編輯器 v5.1";
+            ui.panelTitle.style.color = "";
+            ui.btnAdd.innerText = "加入清單";
+            ui.btnAdd.className = "btn-primary";
+            ui.btnCancelEdit.style.display = "none";
+            renderLibrary();
         }
 
         // --- 匯入 / 匯出 ---
@@ -560,17 +630,17 @@
                         renderLibrary();
                         alert(`成功匯入 ${loaded.length} 個兵牌！`);
                     } else {
-                        alert("JSON 格式錯誤：應為兵牌陣列。");
+                        alert("JSON 格式錯誤");
                     }
                 } catch(err) {
-                    alert("匯入失敗：檔案格式錯誤或損毀。");
+                    alert("匯入失敗");
                 }
             };
             reader.readAsText(file);
             e.target.value = ''; 
         });
 
-        // --- 渲染列表與懸停邏輯 ---
+        // --- 渲染列表 ---
         function renderLibrary() {
             ui.grid.innerHTML = '';
             ui.count.innerText = library.length;
@@ -578,18 +648,24 @@
             library.forEach((unit, index) => {
                 const card = document.createElement('div');
                 card.className = 'unit-card';
+                if (index === editingIndex) {
+                    card.classList.add('editing');
+                }
+
                 const imgSrc = unit.front.image 
                     ? `src="${unit.front.image}"` 
                     : 'style="background:#fff"'; 
 
-                // 卡片內文保持顯示數據摘要，方便使用者知道這張卡的數值
                 card.innerHTML = `
                     <img class="card-img" ${imgSrc}>
                     <div class="card-info">
                         <div class="card-title">${escapeHtml(unit.name)}</div>
                         <div class="card-subtitle">正面: ${escapeHtml(unit.front.text || '(無)')}</div>
                     </div>
-                    <button class="btn-danger" onclick="removeUnit(${index})">X</button>
+                    <div class="card-actions">
+                        <button class="btn-info" style="padding:4px 8px; font-size:0.8rem;" onclick="loadUnitForEdit(${index})">編輯</button>
+                        <button class="btn-danger" style="padding:4px 8px; font-size:0.8rem;" onclick="removeUnit(${index})">刪除</button>
+                    </div>
                 `;
                 
                 card.addEventListener('mouseenter', (e) => showTooltip(unit, e));
@@ -601,12 +677,9 @@
         }
 
         function showTooltip(unit, e) {
-            // Tooltip 圖片上的文字：顯示名稱 (一致性)
             ui.tipTxtFront.innerText = unit.name;
             ui.tipTxtBack.innerText = unit.name;
             
-            // 顏色強制白色 (CSS已處理)
-
             if (unit.front.image) {
                 ui.tipImgFront.src = unit.front.image;
                 ui.tipImgFront.style.display = 'block';
@@ -629,15 +702,9 @@
             const offset = 15;
             let left = e.clientX + offset;
             let top = e.clientY + offset;
-            
             const tipRect = ui.tooltip.getBoundingClientRect();
-            if (left + tipRect.width > window.innerWidth) {
-                left = e.clientX - tipRect.width - offset;
-            }
-            if (top + tipRect.height > window.innerHeight) {
-                top = e.clientY - tipRect.height - offset;
-            }
-
+            if (left + tipRect.width > window.innerWidth) left = e.clientX - tipRect.width - offset;
+            if (top + tipRect.height > window.innerHeight) top = e.clientY - tipRect.height - offset;
             ui.tooltip.style.left = left + 'px';
             ui.tooltip.style.top = top + 'px';
         }
@@ -650,6 +717,9 @@
             event.stopPropagation();
             if(confirm('確定移除此兵牌？')) {
                 hideTooltip();
+                if (index === editingIndex) resetMode();
+                else if (index < editingIndex) editingIndex--;
+                
                 library.splice(index, 1);
                 renderLibrary();
             }
