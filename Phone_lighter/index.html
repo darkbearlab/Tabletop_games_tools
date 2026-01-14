@@ -3,46 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Spotlight FX V5</title>
+    <title>Spotlight FX V6 (Position)</title>
     <style>
         /* 基礎設定 */
         body, html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            background-color: #000000;
-            overflow: hidden;
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: #000000; overflow: hidden;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            user-select: none;
-            -webkit-user-select: none;
-            touch-action: manipulation;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            /* 關鍵：確保背景漸層平滑過渡，避免閃爍感 */
-            transition: background-color 0.1s, background-image 0.1s;
+            user-select: none; -webkit-user-select: none; touch-action: manipulation;
+            display: flex; justify-content: center; align-items: center;
+            transition: background-color 0.1s; /* 移除 image transition 以優化位移效能 */
         }
 
         /* 狀態提示字 */
         #statusText {
-            color: #666;
-            font-size: 20px;
-            pointer-events: none;
-            text-align: center;
-            opacity: 1;
-            transition: opacity 0.2s;
-            z-index: 1;
+            color: #666; font-size: 20px; pointer-events: none;
+            text-align: center; opacity: 1; transition: opacity 0.2s; z-index: 1;
             text-shadow: 0 1px 2px rgba(0,0,0,0.8);
         }
 
-        /* 獨立開關鈕 (右上角) */
+        /* 獨立開關鈕 */
         #menuToggle {
-            position: absolute;
-            top: 20px; right: 20px;
-            font-size: 30px; color: white;
-            opacity: 0.3; z-index: 200; cursor: pointer;
-            padding: 10px; transition: opacity 0.3s;
+            position: absolute; top: 20px; right: 20px;
+            font-size: 30px; color: white; opacity: 0.3; z-index: 200;
+            cursor: pointer; padding: 10px; transition: opacity 0.3s;
         }
         #menuToggle:active { opacity: 1; }
 
@@ -51,35 +35,41 @@
             position: absolute;
             background: rgba(20, 20, 20, 0.95);
             backdrop-filter: blur(10px);
-            padding: 25px;
+            padding: 20px;
             border-radius: 16px;
             text-align: center;
             color: white;
             z-index: 100;
-            min-width: 280px; /* 稍微加寬 */
+            min-width: 300px;
             box-shadow: 0 4px 30px rgba(0,0,0,0.8);
             border: 1px solid #333;
-            transition: transform 0.2s, opacity 0.2s;
+            max-height: 90vh;
+            overflow-y: auto; /* 防止手機橫放時選單太長 */
         }
         .hidden { opacity: 0; pointer-events: none; transform: scale(0.95); }
 
         /* 介面元件 */
-        .control-group { margin-bottom: 18px; text-align: left; }
-        label { display: block; margin-bottom: 8px; font-size: 14px; color: #bbb; }
+        .control-group { margin-bottom: 15px; text-align: left; }
+        label { display: block; margin-bottom: 5px; font-size: 13px; color: #bbb; }
+        
+        /* 雙欄排版用於位置調整 */
+        .row { display: flex; gap: 10px; }
+        .col { flex: 1; }
+
         select, input[type="color"], input[type="range"], #fsBtn { width: 100%; border-radius: 8px; }
-        select { padding: 10px; border: 1px solid #444; background: #222; color: white; outline: none; }
-        input[type="color"] { height: 45px; border: none; padding: 0; background: none; cursor: pointer; }
-        input[type="range"] { accent-color: #007AFF; cursor: pointer; }
+        select { padding: 8px; border: 1px solid #444; background: #222; color: white; outline: none; }
+        input[type="color"] { height: 40px; border: none; padding: 0; background: none; cursor: pointer; }
+        input[type="range"] { accent-color: #007AFF; cursor: pointer; height: 5px; margin-top:5px;}
         .d-none { display: none; }
         
-        #fsBtn { padding: 12px; background: #007AFF; border: none; color: white; font-weight: bold; font-size: 16px; }
-        .val-display { float: right; color: #007AFF; font-weight: bold;}
+        #fsBtn { padding: 12px; background: #007AFF; border: none; color: white; font-weight: bold; font-size: 16px; margin-top: 10px;}
+        .val-display { float: right; color: #007AFF; font-weight: bold; font-size: 13px;}
     </style>
 </head>
 <body>
 
     <div id="menuToggle">⚙️</div>
-    <div id="statusText">準備就緒</div>
+    <div id="statusText">V6 自由位移版</div>
 
     <div id="controls">
         <div class="control-group">
@@ -88,8 +78,19 @@
         </div>
 
         <div class="control-group">
-            <label>2. 聚光範圍: <span id="spotSizeVal" class="val-display">100%</span></label>
-            <input type="range" id="spotSizeRange" min="1" max="100" value="100">
+            <label>2. 光圈大小: <span id="spotSizeVal" class="val-display">50%</span></label>
+            <input type="range" id="spotSizeRange" min="1" max="150" value="50">
+        </div>
+
+        <div class="control-group row">
+            <div class="col">
+                <label>水平位置 (X)</label>
+                <input type="range" id="posXRange" min="0" max="100" value="50">
+            </div>
+            <div class="col">
+                <label>垂直位置 (Y)</label>
+                <input type="range" id="posYRange" min="0" max="100" value="50">
+            </div>
         </div>
 
         <div class="control-group">
@@ -97,62 +98,71 @@
             <select id="modeSelect">
                 <option value="steady">💡 常亮 (Steady)</option>
                 <option value="hold" selected>👆 按壓瞬開 (Hold)</option>
-                <option value="strobe_hold">⚡ 按壓爆閃 (Strobe Hold)</option>
-                <option value="strobe_toggle">⏯️ 開關爆閃 (Strobe Toggle)</option>
+                <option value="strobe_hold">⚡ 按壓爆閃 (Hold)</option>
+                <option value="strobe_toggle">⏯️ 開關爆閃 (Toggle)</option>
             </select>
         </div>
 
         <div class="control-group d-none" id="strobeGroup">
-            <label>閃爍頻率: <span id="speedVal" class="val-display">12 Hz</span></label>
+            <label>頻率: <span id="speedVal" class="val-display">12 Hz</span></label>
             <input type="range" id="freqRange" min="1" max="40" value="12">
         </div>
 
-        <div class="control-group" style="margin-top: 25px;">
+        <div class="control-group">
             <button id="fsBtn">全螢幕 & 隱藏選單</button>
+        </div>
+        
+        <div style="text-align: center; margin-top: 5px;">
+            <a href="#" id="resetPos" style="color: #666; font-size: 12px; text-decoration: none;">[重置位置]</a>
         </div>
     </div>
 
     <script>
+        // DOM Elements
         const body = document.body;
         const controls = document.getElementById('controls');
         const menuToggle = document.getElementById('menuToggle');
         const statusText = document.getElementById('statusText');
-        // Inputs
+        const resetPosBtn = document.getElementById('resetPos');
+        
         const colorPicker = document.getElementById('colorPicker');
         const spotSizeRange = document.getElementById('spotSizeRange');
         const spotSizeVal = document.getElementById('spotSizeVal');
+        const posXRange = document.getElementById('posXRange');
+        const posYRange = document.getElementById('posYRange');
+        
         const modeSelect = document.getElementById('modeSelect');
         const strobeGroup = document.getElementById('strobeGroup');
         const freqRange = document.getElementById('freqRange');
         const speedVal = document.getElementById('speedVal');
         const fsBtn = document.getElementById('fsBtn');
 
+        // State Variables
         let currentMode = 'hold';
         let userColor = colorPicker.value;
-        let spotSize = spotSizeRange.value;
+        let spotSize = parseInt(spotSizeRange.value); // Unit: vmax
+        let posX = 50; // Percentage
+        let posY = 50; // Percentage
+        
         let strobeInterval = null;
         let isStrobeOn = false;
         let isToggledOn = false;
         let wakeLock = null;
 
-        // --- 初始化 ---
+        // Init
         updateUI();
 
-        // --- 核心：開燈與關燈函數 (V5重點) ---
+        // --- Core: Lighting Logic ---
         function turnLightOn() {
             statusText.style.opacity = 0;
             
-            // 如果是 100%，使用純色背景效能較好，且確保無死角
-            if (spotSize >= 100) {
-                 body.style.backgroundImage = 'none';
-                 body.style.backgroundColor = userColor;
-            } else {
-                 // 使用 CSS 徑向漸層製作聚光燈效果
-                 // closest-side 確保圓形不會超出螢幕短邊
-                 // 使用兩個色標點 (size% 和 size.1%) 來製造銳利邊緣
-                 body.style.backgroundColor = '#000000'; // 確保底色是黑的
-                 body.style.backgroundImage = `radial-gradient(circle closest-side, ${userColor} ${spotSize}%, #000000 ${spotSize + 0.1}%)`;
-            }
+            // 使用 vmax 單位確保圓形不變形
+            // X% Y% 控制中心點
+            // radial-gradient(circle [radius] at [position X] [position Y], [start color], [end color])
+            const gradient = `radial-gradient(circle ${spotSize}vmax at ${posX}% ${posY}%, ${userColor} 0%, ${userColor} 99%, #000000 100%)`;
+            
+            body.style.backgroundColor = '#000000';
+            body.style.backgroundImage = gradient;
         }
 
         function turnLightOff() {
@@ -161,31 +171,45 @@
             body.style.backgroundColor = '#000000';
         }
 
-        // --- 事件監聽 ---
+        function refreshLightIfActive() {
+            if (currentMode === 'steady' || (currentMode === 'strobe_toggle' && isToggledOn)) {
+                turnLightOn();
+            } else if (currentMode === 'hold' && body.matches(':active')) {
+                // 特殊情況：如果在 Hold 模式下調整且手指正按著背景(滑鼠模擬時較常見)
+                turnLightOn();
+            }
+        }
 
-        // 介面開關
+        // --- Event Listeners ---
+
         menuToggle.addEventListener('click', (e) => { e.stopPropagation(); controls.classList.toggle('hidden'); });
         fsBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleFullScreen(); controls.classList.add('hidden'); requestWakeLock(); });
 
-        // 設定值變更
-        colorPicker.addEventListener('input', (e) => {
-            userColor = e.target.value;
-            if (currentMode === 'steady') turnLightOn();
+        // 數值調整
+        colorPicker.addEventListener('input', (e) => { userColor = e.target.value; refreshLightIfActive(); });
+        
+        spotSizeRange.addEventListener('input', (e) => { 
+            spotSize = parseInt(e.target.value); 
+            spotSizeVal.innerText = spotSize + '%'; 
+            refreshLightIfActive(); 
         });
 
-        spotSizeRange.addEventListener('input', (e) => {
-            spotSize = parseInt(e.target.value);
-            spotSizeVal.innerText = spotSize + '%';
-            // 如果目前是亮著的狀態 (常亮或開關模式開啟中)，即時更新光圈大小
-            if (currentMode === 'steady' || (currentMode === 'strobe_toggle' && isToggledOn)) {
-                turnLightOn();
-            }
+        // 位置調整
+        posXRange.addEventListener('input', (e) => { posX = e.target.value; refreshLightIfActive(); });
+        posYRange.addEventListener('input', (e) => { posY = e.target.value; refreshLightIfActive(); });
+        
+        // 重置位置
+        resetPosBtn.addEventListener('click', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            posX = 50; posY = 50;
+            posXRange.value = 50; posYRange.value = 50;
+            refreshLightIfActive();
         });
 
         modeSelect.addEventListener('change', (e) => { currentMode = e.target.value; resetState(); updateUI(); });
         freqRange.addEventListener('input', (e) => { speedVal.innerText = e.target.value + ' Hz'; if (strobeInterval) startStrobe(); });
 
-        // 觸控操作邏輯
+        // 觸控邏輯
         body.addEventListener('pointerdown', (e) => {
             if (controls.contains(e.target) || e.target === menuToggle) return;
             if (currentMode === 'hold') turnLightOn();
@@ -209,15 +233,17 @@
             }
         });
 
-        // --- 輔助函數 ---
+        // Helpers
         function updateUI() {
             currentMode.includes('strobe') ? strobeGroup.classList.remove('d-none') : strobeGroup.classList.add('d-none');
-            switch(currentMode) {
-                case 'steady': statusText.innerText = "常亮模式"; break;
-                case 'hold': statusText.innerText = "按壓瞬開模式"; break;
-                case 'strobe_hold': statusText.innerText = "按壓爆閃模式"; break;
-                case 'strobe_toggle': statusText.innerText = "點擊開關爆閃"; break;
-            }
+            // 更新狀態文字
+            const map = {
+                'steady': '常亮模式 (調整位置預覽)',
+                'hold': '按壓瞬開',
+                'strobe_hold': '按壓爆閃',
+                'strobe_toggle': '點擊開關爆閃'
+            };
+            statusText.innerText = map[currentMode];
             if (currentMode === 'steady') turnLightOn(); else turnLightOff();
         }
 
