@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Pro Screen FX V4</title>
+    <style>
+        /* 基礎設定 */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000000;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* 狀態提示字 */
+        #statusText {
+            color: #444;
+            font-size: 20px;
+            pointer-events: none;
+            text-align: center;
+            opacity: 1;
+            transition: opacity 0.2s;
+            z-index: 1;
+        }
+
+        /* 獨立的選單開關按鈕 (右上角) */
+        #menuToggle {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 30px;
+            color: white;
+            opacity: 0.3; /* 平常很淡，不搶戲 */
+            z-index: 200; /* 最上層 */
+            cursor: pointer;
+            padding: 10px; /* 增加點擊範圍 */
+            transition: opacity 0.3s;
+        }
+        #menuToggle:active { opacity: 1; }
+
+        /* 控制面板 */
+        #controls {
+            position: absolute;
+            background: rgba(20, 20, 20, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 25px;
+            border-radius: 16px;
+            text-align: center;
+            color: white;
+            z-index: 100;
+            min-width: 260px;
+            box-shadow: 0 4px 30px rgba(0,0,0,0.8);
+            border: 1px solid #333;
+            transition: transform 0.2s, opacity 0.2s;
+        }
+
+        /* 隱藏面板時的效果 */
+        .hidden { 
+            opacity: 0; 
+            pointer-events: none; 
+            transform: scale(0.95);
+        }
+
+        /* 介面元件樣式 */
+        .control-group { margin-bottom: 18px; }
+        label { display: block; margin-bottom: 8px; font-size: 14px; color: #bbb; }
+        
+        select {
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #444;
+            background: #222;
+            color: white;
+            font-size: 16px;
+            width: 100%;
+            outline: none;
+        }
+
+        input[type="color"] {
+            border: none;
+            width: 100%;
+            height: 50px;
+            padding: 0;
+            background: none;
+            cursor: pointer;
+            border-radius: 8px;
+        }
+
+        input[type="range"] { width: 100%; accent-color: #ff3b30; }
+        .d-none { display: none; }
+        
+        #fsBtn {
+            width: 100%;
+            padding: 12px;
+            background: #007AFF;
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="menuToggle">⚙️</div>
+
+    <div id="statusText">選擇模式後隱藏選單</div>
+
+    <div id="controls">
+        <div class="control-group">
+            <label>1. 光色設定</label>
+            <input type="color" id="colorPicker" value="#FFA500"> </div>
+
+        <div class="control-group">
+            <label>2. 觸發模式</label>
+            <select id="modeSelect">
+                <option value="steady">💡 常亮 (Steady)</option>
+                <option value="hold" selected>👆 按壓瞬開 (Hold)</option>
+                <option value="strobe_hold">⚡ 按壓爆閃 (Strobe Hold)</option>
+                <option value="strobe_toggle">⏯️ 開關爆閃 (Strobe Toggle)</option>
+            </select>
+        </div>
+
+        <div class="control-group d-none" id="strobeGroup">
+            <label>頻率: <span id="speedVal">12</span> Hz</label>
+            <input type="range" id="freqRange" min="1" max="40" value="12">
+        </div>
+
+        <div class="control-group">
+            <button id="fsBtn">全螢幕 & 隱藏選單</button>
+        </div>
+        
+        <p style="font-size:12px; color:#666;">點擊右上角 ⚙️ 切換選單</p>
+    </div>
+
+    <script>
+        const body = document.body;
+        const controls = document.getElementById('controls');
+        const menuToggle = document.getElementById('menuToggle');
+        const statusText = document.getElementById('statusText');
+        const colorPicker = document.getElementById('colorPicker');
+        const modeSelect = document.getElementById('modeSelect');
+        const strobeGroup = document.getElementById('strobeGroup');
+        const freqRange = document.getElementById('freqRange');
+        const speedVal = document.getElementById('speedVal');
+        const fsBtn = document.getElementById('fsBtn');
+
+        let currentMode = 'hold'; // 預設改為 Hold 方便測試
+        let userColor = colorPicker.value;
+        let strobeInterval = null;
+        let isStrobeOn = false;
+        let isToggledOn = false;
+        let wakeLock = null;
+
+        // --- 初始化 ---
+        updateUI();
+
+        // --- 選單開關邏輯 (最重要改動) ---
+        menuToggle.addEventListener('click', (e) => {
+            e.stopPropagation(); // 防止點擊按鈕時觸發閃光
+            controls.classList.toggle('hidden');
+        });
+
+        // --- 全螢幕按鈕 ---
+        fsBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            toggleFullScreen();
+            controls.classList.add('hidden'); // 按下按鈕一定隱藏
+            requestWakeLock();
+        });
+
+        // --- 核心操作邏輯 ---
+        
+        // 按下
+        body.addEventListener('pointerdown', (e) => {
+            // 如果點到面板或設定鈕，不動作
+            if (controls.contains(e.target) || e.target === menuToggle) return;
+
+            if (currentMode === 'hold') {
+                body.style.backgroundColor = userColor;
+                statusText.style.opacity = 0;
+            } 
+            else if (currentMode === 'strobe_hold') {
+                startStrobe();
+                statusText.style.opacity = 0;
+            }
+        });
+
+        // 放開 / 離開
+        const endAction = () => {
+            if (currentMode === 'hold') {
+                body.style.backgroundColor = '#000000';
+                statusText.style.opacity = 1;
+            }
+            else if (currentMode === 'strobe_hold') {
+                stopStrobe();
+                statusText.style.opacity = 1;
+            }
+        };
+        body.addEventListener('pointerup', endAction);
+        body.addEventListener('pointerleave', endAction);
+        body.addEventListener('pointercancel', endAction);
+
+        // 點擊 (Toggle模式用)
+        body.addEventListener('click', (e) => {
+            if (controls.contains(e.target) || e.target === menuToggle) return;
+
+            if (currentMode === 'strobe_toggle') {
+                isToggledOn = !isToggledOn;
+                if (isToggledOn) {
+                    startStrobe();
+                    statusText.style.opacity = 0;
+                    statusText.innerText = "";
+                } else {
+                    stopStrobe();
+                    statusText.innerText = "點擊螢幕開始/暫停";
+                    statusText.style.opacity = 1;
+                }
+            }
+        });
+
+        // --- 設定值變更 ---
+        colorPicker.addEventListener('input', (e) => {
+            userColor = e.target.value;
+            if (currentMode === 'steady') body.style.backgroundColor = userColor;
+        });
+
+        modeSelect.addEventListener('change', (e) => {
+            currentMode = e.target.value;
+            resetState();
+            updateUI();
+        });
+
+        freqRange.addEventListener('input', (e) => {
+            speedVal.innerText = e.target.value;
+            if (strobeInterval) startStrobe();
+        });
+
+        // --- 輔助函數 ---
+        function updateUI() {
+            if (currentMode.includes('strobe')) {
+                strobeGroup.classList.remove('d-none');
+            } else {
+                strobeGroup.classList.add('d-none');
+            }
+
+            switch(currentMode) {
+                case 'steady': statusText.innerText = ""; break;
+                case 'hold': statusText.innerText = "按壓瞬開 (特效用)"; break;
+                case 'strobe_hold': statusText.innerText = "按壓爆閃"; break;
+                case 'strobe_toggle': statusText.innerText = "點擊螢幕開始/暫停"; break;
+            }
+
+            if (currentMode === 'steady') {
+                body.style.backgroundColor = userColor;
+            } else {
+                body.style.backgroundColor = '#000000';
+            }
+        }
+
+        function resetState() {
+            stopStrobe();
+            isToggledOn = false;
+            statusText.style.opacity = 1;
+            body.style.backgroundColor = (currentMode === 'steady') ? userColor : '#000000';
+        }
+
+        function startStrobe() {
+            if (strobeInterval) clearInterval(strobeInterval);
+            const freq = parseInt(freqRange.value);
+            const ms = 1000 / freq / 2;
+            
+            strobeInterval = setInterval(() => {
+                isStrobeOn = !isStrobeOn;
+                body.style.backgroundColor = isStrobeOn ? userColor : '#000000';
+            }, ms);
+        }
+
+        function stopStrobe() {
+            if (strobeInterval) clearInterval(strobeInterval);
+            strobeInterval = null;
+            body.style.backgroundColor = '#000000';
+        }
+
+        async function toggleFullScreen() {
+            if (!document.fullscreenElement) {
+                try { await document.documentElement.requestFullscreen(); } catch(e) {}
+            }
+        }
+
+        async function requestWakeLock() {
+            try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
+        }
+    </script>
+</body>
+</html>
