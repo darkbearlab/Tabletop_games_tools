@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pixel Art Converter (GameBoy Style)</title>
+    <title>Retro Console Pixel Converter</title>
     <style>
+        /* 樣式保持之前優化過的版本 */
         body {
             font-family: 'Courier New', Courier, monospace;
             background-color: #2c3e50;
@@ -13,44 +14,47 @@
             flex-direction: column;
             align-items: center;
             padding: 20px;
+            min-height: 100vh;
+            box-sizing: border-box;
         }
-        h1 { margin-bottom: 20px; text-transform: uppercase; border-bottom: 2px solid #e74c3c; }
+        h1 { margin-bottom: 20px; text-transform: uppercase; border-bottom: 2px solid #e74c3c; font-size: 1.5rem; }
         
         .controls {
             background: #34495e;
-            padding: 20px;
+            padding: 15px;
             border-radius: 8px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.3);
             margin-bottom: 20px;
             display: flex;
             flex-wrap: wrap;
-            gap: 20px;
+            gap: 15px;
             justify-content: center;
             max-width: 800px;
+            width: 100%;
+            box-sizing: border-box;
         }
 
         .control-group {
             display: flex;
             flex-direction: column;
-            min-width: 150px;
+            min-width: 120px;
         }
 
-        label { margin-bottom: 5px; font-weight: bold; font-size: 0.9em; }
-        input[type="range"] { cursor: pointer; }
-        
+        label { margin-bottom: 5px; font-weight: bold; font-size: 0.85em; }
+        input[type="range"], select { cursor: pointer; }
+        select { padding: 5px; border-radius: 4px; background: #ecf0f1; border: none; font-family: inherit; }
+
         .btn {
             background-color: #e67e22;
             border: none;
             color: white;
-            padding: 10px 20px;
+            padding: 8px 16px;
             text-align: center;
             text-decoration: none;
             display: inline-block;
-            font-size: 16px;
-            margin: 4px 2px;
+            font-size: 14px;
             cursor: pointer;
             border-radius: 4px;
-            font-family: inherit;
             transition: background 0.3s;
         }
         .btn:hover { background-color: #d35400; }
@@ -60,20 +64,28 @@
         #canvas-container {
             position: relative;
             border: 4px solid #95a5a6;
-            background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAADFJREFUOE9jZGVl/c+AEzCSqHgUE2AAiG109//Jkyf/kTQ9jY6G4WgYkA4GHOanhQEA+ygT915/6qEAAAAASUVORK5CYII='); /* 透明背景格 */
+            background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAADFJREFUOE9jZGVl/c+AEzCSqHgUE2AAiG109//Jkyf/kTQ9jY6G4WgYkA4GHOanhQEA+ygT915/6qEAAAAASUVORK5CYII='); 
+            width: 100%;
+            height: 60vh; 
+            max-width: 900px; 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            background-color: #111;
         }
         
         canvas {
-            display: block;
             max-width: 100%;
-            height: auto;
-            image-rendering: pixelated; /* 關鍵 CSS：讓瀏覽器不要模糊化像素 */
+            max-height: 100%;
+            object-fit: contain;
+            image-rendering: pixelated; 
         }
     </style>
 </head>
 <body>
 
-    <h1>像素藝術轉換器</h1>
+    <h1>復古主機濾鏡</h1>
 
     <div class="controls">
         <div class="control-group">
@@ -82,30 +94,37 @@
         </div>
 
         <div class="control-group">
-            <label for="pixelSize">像素大小 (解析度): <span id="pixelVal">4</span></label>
-            <input type="range" id="pixelSize" min="1" max="50" value="4">
+            <label for="consoleMode">2. 選擇主機風格</label>
+            <select id="consoleMode">
+                <option value="none">自定義 (滑桿控制)</option>
+                <option value="gb">GameBoy (綠色調)</option>
+                <option value="nes">NES (紅白機 54色)</option>
+                <option value="sega">Sega MD (9-bit Color)</option>
+                <option value="snes">SNES (15-bit Color)</option>
+                <option value="bw">1-bit (黑白)</option>
+            </select>
         </div>
 
         <div class="control-group">
-            <label for="colorDepth">色彩簡化 (色階): <span id="colorVal">16</span></label>
-            <input type="range" id="colorDepth" min="2" max="32" value="16" step="2">
-            <small>數值越小，顏色越少</small>
+            <label for="pixelSize">像素大小: <span id="pixelVal">6</span></label>
+            <input type="range" id="pixelSize" min="1" max="64" value="6">
+        </div>
+
+        <div class="control-group" id="customControls">
+            <label for="colorDepth">色彩簡化 (自定義用): <span id="colorVal">16</span></label>
+            <input type="range" id="colorDepth" min="2" max="64" value="16" step="2">
         </div>
 
         <div class="control-group">
-            <label>特效濾鏡</label>
-            <div>
-                <input type="checkbox" id="gbMode"> 
-                <label for="gbMode" style="display:inline; cursor:pointer;">開啟 GameBoy 模式</label>
-            </div>
+            <label>特效</label>
             <div style="margin-top:5px;">
                 <input type="checkbox" id="dither"> 
-                <label for="dither" style="display:inline; cursor:pointer;">開啟抖動 (Dithering)</label>
+                <label for="dither" style="display:inline; cursor:pointer;">隨機抖動</label>
             </div>
         </div>
         
         <div class="control-group" style="justify-content: flex-end;">
-            <button class="btn btn-download" id="downloadBtn">下載圖片</button>
+            <button class="btn btn-download" id="downloadBtn">下載大圖</button>
         </div>
     </div>
 
@@ -117,9 +136,12 @@
         const upload = document.getElementById('upload');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
+        const tempCanvas = document.createElement('canvas');
+        const tempCtx = tempCanvas.getContext('2d');
+
         const pixelSizeInput = document.getElementById('pixelSize');
         const colorDepthInput = document.getElementById('colorDepth');
-        const gbModeInput = document.getElementById('gbMode');
+        const consoleModeInput = document.getElementById('consoleMode'); // 新增
         const ditherInput = document.getElementById('dither');
         const pixelVal = document.getElementById('pixelVal');
         const colorVal = document.getElementById('colorVal');
@@ -127,56 +149,93 @@
 
         let img = new Image();
         
-        // 經典 GameBoy 綠色調色盤 (最深 -> 最淺)
+        // --- 核心資料區 ---
+
+        // GameBoy 綠色調
         const gbPalette = [
-            {r: 15, g: 56, b: 15},   // #0f380f
-            {r: 48, g: 98, b: 48},   // #306230
-            {r: 139, g: 172, b: 15}, // #8bac0f
-            {r: 155, g: 188, b: 15}  // #9bbc0f
+            {r: 15, g: 56, b: 15}, {r: 48, g: 98, b: 48}, 
+            {r: 139, g: 172, b: 15}, {r: 155, g: 188, b: 15}
         ];
 
-        // 監聽圖片上傳
+        // NES (紅白機) 標準色票 - 這是最經典的 54 色
+        const nesPaletteHex = [
+            '#7C7C7C', '#0000FC', '#0000BC', '#4428BC', '#940084', '#A80020', '#A81000', '#881400',
+            '#503000', '#007800', '#006800', '#005800', '#004058', '#000000',
+            '#BCBCBC', '#0078F8', '#0058F8', '#6844FC', '#D800CC', '#E40058', '#F83800', '#E45C10',
+            '#AC7C00', '#00B800', '#00A800', '#00A844', '#008888', '#000000',
+            '#F8F8F8', '#3CBCFC', '#6888FC', '#9878F8', '#F878F8', '#F85898', '#F87858', '#FCA044',
+            '#F8B800', '#B8F818', '#58D854', '#58F898', '#00E8D8', '#787878',
+            '#FCFCFC', '#A4E4FC', '#B8B8F8', '#D8B8F8', '#F8B8F8', '#F8A4C0', '#F0D0B0', '#FCE0A8',
+            '#F8D878', '#D8F878', '#B8F8B8', '#B8F8D8', '#00FCFC', '#F8D8F8'
+        ];
+        
+        // 將 Hex 轉為 RGB 陣列以便計算距離
+        const nesPalette = nesPaletteHex.map(hex => {
+            return {
+                r: parseInt(hex.slice(1, 3), 16),
+                g: parseInt(hex.slice(3, 5), 16),
+                b: parseInt(hex.slice(5, 7), 16)
+            };
+        });
+
+        // 輔助函式：尋找色票中最接近的顏色 (最短歐幾里得距離)
+        function findClosestColor(r, g, b, palette) {
+            let minDist = Infinity;
+            let closest = palette[0];
+            for (let i = 0; i < palette.length; i++) {
+                const c = palette[i];
+                // 使用加權距離讓顏色更自然 (人眼對綠色較敏感)
+                // 這裡簡化使用標準距離平方
+                const dist = (r - c.r) ** 2 + (g - c.g) ** 2 + (b - c.b) ** 2;
+                if (dist < minDist) {
+                    minDist = dist;
+                    closest = c;
+                }
+            }
+            return closest;
+        }
+
+        // 輔助函式：限制通道色階 (用於 Sega/SNES 模擬)
+        function limitChannel(val, levels) {
+            const step = 255 / (levels - 1);
+            return Math.round(val / step) * step;
+        }
+
         upload.addEventListener('change', function(e) {
             const reader = new FileReader();
             reader.onload = function(event) {
-                img.onload = function() {
-                    render();
-                }
+                img.onload = render;
                 img.src = event.target.result;
             }
-            reader.readAsDataURL(e.target.files[0]);
+            if (e.target.files[0]) reader.readAsDataURL(e.target.files[0]);
         });
 
-        // 監聽控制項變化
-        [pixelSizeInput, colorDepthInput, gbModeInput, ditherInput].forEach(el => {
+        [pixelSizeInput, colorDepthInput, consoleModeInput, ditherInput].forEach(el => {
             el.addEventListener('input', render);
         });
 
         function render() {
             if (!img.src) return;
 
-            // 更新顯示數值
             const size = parseInt(pixelSizeInput.value);
-            const depth = parseInt(colorDepthInput.value);
+            const mode = consoleModeInput.value;
+            const customDepth = parseInt(colorDepthInput.value);
+            
             pixelVal.textContent = size;
-            colorVal.textContent = depth;
+            colorVal.textContent = customDepth;
 
-            // 1. 設定畫布大小 (縮小後的尺寸)
             const w = img.width;
             const h = img.height;
-            
-            // 計算縮小後的解析度
-            const smW = Math.floor(w / size);
-            const smH = Math.floor(h / size);
+            let safeSize = size < 1 ? 1 : size;
+            const smW = Math.floor(w / safeSize);
+            const smH = Math.floor(h / safeSize);
 
-            canvas.width = smW;
-            canvas.height = smH;
+            tempCanvas.width = smW;
+            tempCanvas.height = smH;
+            tempCtx.imageSmoothingEnabled = false;
+            tempCtx.drawImage(img, 0, 0, smW, smH);
 
-            // 2. 繪製縮小的圖片 (第一步像素化)
-            ctx.drawImage(img, 0, 0, smW, smH);
-
-            // 3. 取得像素資料進行顏色處理
-            const imageData = ctx.getImageData(0, 0, smW, smH);
+            const imageData = tempCtx.getImageData(0, 0, smW, smH);
             const data = imageData.data;
 
             for (let i = 0; i < data.length; i += 4) {
@@ -184,59 +243,79 @@
                 let g = data[i+1];
                 let b = data[i+2];
 
-                if (gbModeInput.checked) {
-                    // --- GameBoy 模式 ---
-                    // 計算亮度 (Luminance)
+                // 隨機抖動處理
+                let dither = 0;
+                if (ditherInput.checked) {
+                    dither = (Math.random() - 0.5) * 20;
+                    r = Math.min(255, Math.max(0, r + dither));
+                    g = Math.min(255, Math.max(0, g + dither));
+                    b = Math.min(255, Math.max(0, b + dither));
+                }
+
+                // --- 色彩處理核心邏輯 ---
+                if (mode === 'gb') {
+                    // GameBoy (4階綠色)
                     const avg = 0.299 * r + 0.587 * g + 0.114 * b;
-                    
-                    // 簡單的抖動處理 (Bayer Dithering 模擬)
-                    let dither = 0;
-                    if (ditherInput.checked) {
-                        // 根據像素位置添加隨機噪點模擬抖動
-                        dither = (Math.random() - 0.5) * 30; 
-                    }
-
-                    // 映射到 4 個顏色
                     let index = 0;
-                    const val = avg + dither;
-                    
-                    if (val < 64) index = 0;
-                    else if (val < 128) index = 1;
-                    else if (val < 192) index = 2;
+                    if (avg < 64) index = 0;
+                    else if (avg < 128) index = 1;
+                    else if (avg < 192) index = 2;
                     else index = 3;
+                    const c = gbPalette[index];
+                    r = c.r; g = c.g; b = c.b;
 
-                    const color = gbPalette[index];
-                    data[i] = color.r;
-                    data[i+1] = color.g;
-                    data[i+2] = color.b;
+                } else if (mode === 'nes') {
+                    // NES (紅白機 54色比對)
+                    const c = findClosestColor(r, g, b, nesPalette);
+                    r = c.r; g = c.g; b = c.b;
+
+                } else if (mode === 'sega') {
+                    // Sega Mega Drive (3 bits/channel = 8 levels)
+                    // 0, 36, 73...
+                    r = limitChannel(r, 8);
+                    g = limitChannel(g, 8);
+                    b = limitChannel(b, 8);
+
+                } else if (mode === 'snes') {
+                    // SNES (5 bits/channel = 32 levels)
+                    r = limitChannel(r, 32);
+                    g = limitChannel(g, 32);
+                    b = limitChannel(b, 32);
+
+                } else if (mode === 'bw') {
+                    // 1-Bit (黑白)
+                    const avg = 0.299 * r + 0.587 * g + 0.114 * b;
+                    const val = avg > 127 ? 255 : 0;
+                    r = val; g = val; b = val;
 
                 } else {
-                    // --- 通用色彩限制 (Posterization) ---
-                    // 公式：Math.floor(顏色 / 階層) * 階層
-                    // 為了讓顏色分佈更均勻，做一點調整
-                    const step = 255 / (depth - 1);
-                    
-                    data[i] = Math.floor(r / step) * step;
-                    data[i+1] = Math.floor(g / step) * step;
-                    data[i+2] = Math.floor(b / step) * step;
+                    // 自定義模式
+                    r = limitChannel(r, customDepth);
+                    g = limitChannel(g, customDepth);
+                    b = limitChannel(b, customDepth);
                 }
+
+                data[i] = r;
+                data[i+1] = g;
+                data[i+2] = b;
             }
 
-            ctx.putImageData(imageData, 0, 0);
+            tempCtx.putImageData(imageData, 0, 0);
+
+            canvas.width = w;
+            canvas.height = h;
+            ctx.imageSmoothingEnabled = false;
+            ctx.mozImageSmoothingEnabled = false;
+            ctx.webkitImageSmoothingEnabled = false;
+            ctx.msImageSmoothingEnabled = false;
+            ctx.drawImage(tempCanvas, 0, 0, smW, smH, 0, 0, w, h);
         }
 
-        // 下載功能
         downloadBtn.addEventListener('click', () => {
             if (!img.src) return;
-            // 為了讓下載的圖片是清晰的大圖，我們建立一個臨時 canvas
             const link = document.createElement('a');
-            link.download = 'pixel-art.png';
-            
-            // 這裡有個小技巧：如果要下載「放大後」的清晰像素圖
-            // 可以直接用 canvas.toDataURL，因為我們在 CSS 設定了 image-rendering: pixelated
-            // 但為了確保檔案本身是大的，我們可以在這裡做一次放大繪製，或者直接下載小的讓使用者自己縮放
-            // 這裡我們先下載當前畫布內容 (小圖)，這是最標準的像素檔
-            link.href = canvas.toDataURL();
+            link.download = `pixel-art-${consoleModeInput.value}.png`;
+            link.href = canvas.toDataURL('image/png');
             link.click();
         });
     </script>
