@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 像素修復 - 比例尺鎖定版</title>
+    <style>
+        :root { --primary: #4a90e2; --bg: #1a1a1a; --panel: #2d2d2d; --text: #e0e0e0; --accent: #00ff00; --scaler: #f1c40f; }
+        body { font-family: 'Consolas', monospace; margin: 0; overflow: hidden; background-color: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
+        .toolbar { background: var(--panel); padding: 12px 20px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; z-index: 100; border-bottom: 1px solid #444; }
+        .control-group { display: flex; align-items: center; gap: 10px; border-right: 1px solid #555; padding-right: 15px; }
+        input[type="number"], input[type="file"] { background: #111; border: 1px solid #666; color: var(--accent); padding: 5px; border-radius: 4px; width: 60px; }
+        button { background-color: #444; color: white; border: 1px solid #000; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { background-color: #555; border-color: var(--accent); }
+        button.scaler-btn { background-color: var(--scaler); color: #000; }
+        button.success { background-color: #27ae60; }
+        .workspace-container { flex: 1; position: relative; overflow: hidden; background-color: #111; cursor: grab; }
+        #viewport { position: absolute; transform-origin: 0 0; }
+        #image-container { position: relative; }
+        #source-image { display: block; pointer-events: none; image-rendering: pixelated; }
+
+        /* 比例尺方塊 */
+        .pixel-scaler { position: absolute; border: 2px solid var(--scaler); background: rgba(241, 196, 15, 0.2); z-index: 30; cursor: move; box-sizing: border-box; }
+        .scaler-handle { position: absolute; width: 12px; height: 12px; background: white; border: 2px solid #000; bottom: -6px; right: -6px; cursor: se-resize; border-radius: 2px; }
+        
+        /* 採樣框 */
+        .crop-box { position: absolute; border: 2px solid #ff4444; box-sizing: border-box; background-color: rgba(255, 68, 68, 0.1); cursor: move; z-index: 10; pointer-events: all; }
+        .crop-box.selected { border: 2px solid var(--accent); z-index: 20; }
+        .grid-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: grid; pointer-events: none; opacity: 0.3; }
+        .grid-cell { border: 0.1px solid rgba(255, 255, 255, 0.5); }
+        .info-label { position: absolute; top: -22px; left: 0; background: rgba(0,0,0,0.8); color: var(--accent); font-size: 11px; padding: 2px 6px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+
+    <div class="toolbar">
+        <div class="control-group"><input type="file" id="file-input"></div>
+        <div class="control-group">
+            <button class="scaler-btn" onclick="addScaler()">1. 放置正方形比例尺</button>
+        </div>
+        <div class="control-group">
+            <label>2. 目標尺寸(px):</label>
+            <input type="number" id="target-res" value="32">
+            <button onclick="generateFromScaler()">3. 生成採樣框</button>
+        </div>
+        <div class="control-group">
+            <button class="success" onclick="processAndDownload()">轉換並下載</button>
+            <span id="zoom-text" style="margin-left:10px">100%</span>
+        </div>
+    </div>
+
+    <div class="workspace-container" id="workspace">
+        <div id="viewport">
+            <div id="image-container"></div>
+        </div>
+    </div>
+
+    <script>
+        const workspace = document.getElementById('workspace'), viewport = document.getElementById('viewport'), container = document.getElementById('image-container'), zoomText = document.getElementById('zoom-text');
+        let imgElement = null, scale = 1.0, posX = 0, posY = 0, selectedBox = null, scalerBox = null;
+
+        // 畫布移動與縮放 (維持平滑操作)
+        let isPanning = false, startX, startY;
+        workspace.onmousedown = (e) => { if (e.button === 1 || e.target === workspace) { isPanning = true; startX = e.clientX - posX; startY = e.clientY - posY; e.preventDefault(); } };
+        window.onmousemove = (e) => { if (isPanning) { posX = e.clientX - startX; posY = e.clientY - startY; updateViewport(); } };
+        window.onmouseup = () => isPanning = false;
+        workspace.onwheel = (e) => { e.preventDefault(); const delta = e.deltaY > 0 ? -0.1 : 0.1; zoom(delta, e.clientX, e.clientY); };
+        function zoom(delta, mX, mY) {
+            const oldS = scale; scale = Math.max(0.1, scale + delta);
+            const rect = workspace.getBoundingClientRect();
+            const lX = (mX - rect.left - posX) / oldS, lY = (mY - rect.top - posY) / oldS;
+            posX -= lX * (scale - oldS); posY -= lY * (scale - oldS);
+            updateViewport();
+        }
+        function updateViewport() { viewport.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`; zoomText.innerText = Math.round(scale * 100) + '%'; }
+
+        // 圖片載入
+        document.getElementById('file-input').onchange = function(e) {
+            const file = e.target.files[0]; if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                container.innerHTML = ''; imgElement = document.createElement('img');
+                imgElement.src = ev.target.result;
+                imgElement.onload = () => {
+                    container.style.width = imgElement.naturalWidth + 'px'; container.style.height = imgElement.naturalHeight + 'px';
+                    posX = (workspace.offsetWidth - imgElement.naturalWidth)/2; posY = (workspace.offsetHeight - imgElement.naturalHeight)/2;
+                    updateViewport();
+                };
+                container.appendChild(imgElement);
+            };
+            reader.readAsDataURL(file);
+        };
+
+        // 核心邏輯：新增比例尺
+        function addScaler() {
+            if (!imgElement || scalerBox) return;
+            scalerBox = document.createElement('div');
+            scalerBox.className = 'pixel-scaler';
+            scalerBox.style.width = '10px'; scalerBox.style.height = '10px';
+            scalerBox.style.left = ((-posX + 100)/scale) + 'px'; scalerBox.style.top = ((-posY + 100)/scale) + 'px';
+            scalerBox.innerHTML = '<div class="scaler-handle"></div><div style="font-size:10px; position:absolute; bottom:-18px; color:#f1c40f; white-space:nowrap; font-weight:bold;">基準像素 (對準單顆)</div>';
+            
+            setupDraggable(scalerBox, scalerBox.querySelector('.scaler-handle'), false, true); // 最後參數 true 代表鎖定比例
+            container.appendChild(scalerBox);
+        }
+
+        function generateFromScaler() {
+            if (!scalerBox) return alert('請先放置黃色比例尺');
+            const unitW = scalerBox.offsetWidth; // 既然鎖定 1:1，取寬度即可
+            const res = parseInt(document.getElementById('target-res').value);
+            
+            const box = document.createElement('div');
+            box.className = 'crop-box';
+            box.style.width = (unitW * res) + 'px'; 
+            box.style.height = (unitW * res) + 'px';
+            box.style.left = scalerBox.style.left; 
+            box.style.top = scalerBox.style.top;
+            box.dataset.res = res;
+            
+            box.innerHTML = `<div class="info-label">${res}x${res} 採樣網格</div>
+                             <div class="grid-overlay" style="grid-template-columns:repeat(${res},1fr); grid-template-rows:repeat(${res},1fr)">
+                                ${Array(res*res).fill('<div class="grid-cell"></div>').join('')}
+                             </div>
+                             <div class="remove-btn" onclick="this.parentElement.remove()" style="position:absolute; top:-12px; right:-12px; background:#ff4444; color:white; border-radius:50%; width:22px; height:22px; text-align:center; line-height:20px; cursor:pointer; border:1px solid #000; font-weight:bold;">×</div>`;
+            
+            setupDraggable(box, null, true, false); 
+            container.appendChild(box);
+            selectBox(box);
+        }
+
+        function setupDraggable(el, handle, isCropBox, lockRatio) {
+            el.onmousedown = (e) => {
+                if (e.target === handle || e.target.classList.contains('remove-btn')) return;
+                e.stopPropagation(); if(isCropBox) selectBox(el);
+                let sX = e.clientX, sY = e.clientY, sL = parseFloat(el.style.left), sT = parseFloat(el.style.top);
+                document.onmousemove = (m) => {
+                    el.style.left = (sL + (m.clientX - sX) / scale) + 'px'; 
+                    el.style.top = (sT + (m.clientY - sY) / scale) + 'px';
+                };
+                document.onmouseup = () => document.onmousemove = null;
+            };
+
+            if (handle) {
+                handle.onmousedown = (e) => {
+                    e.stopPropagation();
+                    let sX = e.clientX, sW = el.offsetWidth;
+                    document.onmousemove = (m) => {
+                        let newSize = sW + (m.clientX - sX) / scale;
+                        if (newSize > 1) {
+                            el.style.width = newSize + 'px';
+                            el.style.height = newSize + 'px'; // 強制同步高度，實現 1:1
+                        }
+                    };
+                    document.onmouseup = () => document.onmousemove = null;
+                };
+            }
+        }
+
+        function selectBox(box) { if (selectedBox) selectedBox.classList.remove('selected'); selectedBox = box; selectedBox.classList.add('selected'); }
+
+        function processAndDownload() {
+            const boxes = container.querySelectorAll('.crop-box');
+            if (!imgElement || boxes.length === 0) return;
+            const sCanvas = document.createElement('canvas'); const sCtx = sCanvas.getContext('2d');
+            sCanvas.width = imgElement.naturalWidth; sCanvas.height = imgElement.naturalHeight;
+            sCtx.drawImage(imgElement, 0, 0);
+
+            boxes.forEach((box, i) => {
+                const res = parseInt(box.dataset.res);
+                const out = document.createElement('canvas'); out.width = res; out.height = res;
+                const oCtx = out.getContext('2d');
+                const x = parseFloat(box.style.left), y = parseFloat(box.style.top), w = box.offsetWidth;
+                const data = sCtx.getImageData(x, y, w, w).data;
+
+                for (let gy = 0; gy < res; gy++) {
+                    for (let gx = 0; gx < res; gx++) {
+                        const sx = Math.floor(((gx + 0.5) / res) * w);
+                        const sy = Math.floor(((gy + 0.5) / res) * w);
+                        const p = (sy * Math.floor(w) + sx) * 4;
+                        oCtx.fillStyle = `rgba(${data[p]},${data[p+1]},${data[p+2]},${data[p+3]/255})`;
+                        oCtx.fillRect(gx, gy, 1, 1);
+                    }
+                }
+                const a = document.createElement('a'); a.download = `true_pixel_${res}x${res}_${i+1}.png`; a.href = out.toDataURL(); a.click();
+            });
+        }
+    </script>
+</body>
+</html>
